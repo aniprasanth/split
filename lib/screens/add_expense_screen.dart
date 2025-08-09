@@ -83,8 +83,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (mounted) {
         setState(() {
           _userGroups = groups;
-          if (_selectedGroup == null && groups.isNotEmpty) {
-            _selectedGroup = groups.first;
+          // Only set a default group if one was passed in via constructor
+          // Otherwise, keep _selectedGroup as null (None)
+          if (widget.group != null && _selectedGroup == null) {
+            _selectedGroup = widget.group;
             _initializeGroupData();
           }
         });
@@ -457,6 +459,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   Future<void> _saveExpense() async {
+    // Prevent multiple simultaneous calls
+    if (_isLoading) return;
+    
     // Validate form
     if (!_formKey.currentState!.validate()) {
       return;
@@ -582,4 +587,3 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 }
-

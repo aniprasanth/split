@@ -257,15 +257,24 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Future<void> _handleGoogleSignIn(AuthService authService) async {
+    if (_isLoading || authService.isLoading) return;
+    
     setState(() {
       _isLoading = true;
     });
 
     try {
+      // Clear any previous error messages
+      authService.clearError();
+      
       final result = await authService.signInWithGoogle();
       if (!mounted) return;
       
       if (result != null) {
+        // Wait for user data to load before navigating
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted) return;
+        
         // Navigate to home screen immediately after successful sign-in
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const HomeScreen()),
@@ -273,14 +282,24 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       } else {
         // Check if there's a specific error message from auth service
         final errorMsg = authService.errorMessage ?? 'Google sign-in failed. Please try again.';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMsg)),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(errorMsg),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {
@@ -292,3 +311,4 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 }
+

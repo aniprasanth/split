@@ -118,6 +118,10 @@ class AuthService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearError() {
+    _setError(null);
+  }
+
   Future<UserCredential?> signInWithGoogle() async {
     try {
       _setLoading(true);
@@ -417,3 +421,4 @@ class AuthService extends ChangeNotifier {
     _setError(null);
   }
 }
+
