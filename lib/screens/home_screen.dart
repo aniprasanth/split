@@ -79,6 +79,49 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Helper method to generate consistent colors for groups
+  Color _getGroupColor(String groupName) {
+    final colors = [
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.teal,
+      Colors.indigo,
+      Colors.pink,
+      Colors.brown,
+      Colors.cyan,
+      Colors.deepOrange,
+    ];
+    
+    // Use hashCode to get consistent color for same group name
+    final index = groupName.hashCode.abs() % colors.length;
+    return colors[index];
+  }
+
+  // Helper method to format group creation date
+  String _formatGroupDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date).inDays;
+    
+    if (difference == 0) {
+      return 'Created today';
+    } else if (difference == 1) {
+      return 'Created yesterday';
+    } else if (difference < 7) {
+      return 'Created $difference days ago';
+    } else if (difference < 30) {
+      final weeks = (difference / 7).floor();
+      return weeks == 1 ? 'Created 1 week ago' : 'Created $weeks weeks ago';
+    } else if (difference < 365) {
+      final months = (difference / 30).floor();
+      return months == 1 ? 'Created 1 month ago' : 'Created $months months ago';
+    } else {
+      final years = (difference / 365).floor();
+      return years == 1 ? 'Created 1 year ago' : 'Created $years years ago';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -97,6 +140,64 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 16),
+                  
+                  // Welcome & Overview Card
+                  Consumer<AuthService>(
+                    builder: (context, authService, child) {
+                      final currentUser = authService.currentUser;
+                      return Card(
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                                    backgroundImage: currentUser?.photoUrl != null 
+                                        ? NetworkImage(currentUser!.photoUrl!) 
+                                        : null,
+                                    child: currentUser?.photoUrl == null
+                                        ? Icon(
+                                            Icons.person,
+                                            color: Theme.of(context).primaryColor,
+                                            size: 28,
+                                          )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Welcome back!',
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        Text(
+                                          currentUser?.name ?? 'User',
+                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  
+                  const SizedBox(height: 24),
                   Text(
                     'Quick Access',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -105,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // Recent Groups Section
+                  // My Groups Section
                   Consumer2<AuthService, DatabaseService>(
                     builder: (context, authService, dbService, child) {
                       final currentUser = authService.currentUser;
@@ -114,48 +215,202 @@ class _HomeScreenState extends State<HomeScreen> {
                       return StreamBuilder<List<GroupModel>>(
                         stream: dbService.getUserGroups(currentUser.uid),
                         builder: (context, snapshot) {
-                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                            return const SizedBox.shrink();
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Card(
+                              child: Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Center(child: CircularProgressIndicator()),
+                              ),
+                            );
                           }
-                          
-                          final recentGroups = snapshot.data!.take(3).toList();
+
+                          if (snapshot.hasError) {
+                            return Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  children: [
+                                    Icon(Icons.error_outline, size: 48, color: Colors.red.shade400),
+                                    const SizedBox(height: 8),
+                                    const Text('Error loading groups'),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }
+
+                          final allGroups = snapshot.data ?? [];
                           
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Recent Groups',
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              ...recentGroups.map((group) => Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: Theme.of(context).primaryColor,
-                                    child: Text(
-                                      group.name.isNotEmpty ? group.name[0].toUpperCase() : 'G',
-                                      style: const TextStyle(
-                                        color: Colors.white,
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    'My Groups',
+                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  if (allGroups.isNotEmpty)
+                                    Chip(
+                                      label: Text('${allGroups.length}'),
+                                      backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                                      labelStyle: TextStyle(
+                                        color: Theme.of(context).primaryColor,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              
+                              if (allGroups.isEmpty) ...[
+                                // Empty state
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(32),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.group_outlined,
+                                          size: 64,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'No Groups Yet',
+                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Create your first group to start splitting expenses with friends',
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: Colors.grey.shade600,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        ElevatedButton.icon(
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => const AddGroupScreen(),
+                                              ),
+                                            );
+                                          },
+                                          icon: const Icon(Icons.add),
+                                          label: const Text('Create Group'),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  title: Text(group.name),
-                                  subtitle: Text('${group.members.length} members'),
-                                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => GroupDetailScreen(group: group),
-                                      ),
-                                    );
-                                  },
                                 ),
-                              )),
+                              ] else ...[
+                                // Groups list
+                                ...allGroups.map((group) => Card(
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  elevation: 2,
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.all(16),
+                                    leading: CircleAvatar(
+                                      radius: 24,
+                                      backgroundColor: _getGroupColor(group.name),
+                                      child: Text(
+                                        group.name.isNotEmpty ? group.name[0].toUpperCase() : 'G',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 18,
+                                        ),
+                                      ),
+                                    ),
+                                    title: Text(
+                                      group.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const SizedBox(height: 4),
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.people,
+                                              size: 16,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              '${group.members.length} members',
+                                              style: TextStyle(
+                                                color: Colors.grey.shade600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.access_time,
+                                              size: 16,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Text(
+                                              _formatGroupDate(group.createdAt),
+                                              style: TextStyle(
+                                                color: Colors.grey.shade600,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.add_circle_outline,
+                                            color: Theme.of(context).primaryColor,
+                                          ),
+                                          onPressed: () {
+                                            Navigator.push(
+                                              context,
+                                              MaterialPageRoute(
+                                                builder: (context) => AddExpenseScreen(group: group),
+                                              ),
+                                            );
+                                          },
+                                          tooltip: 'Add expense',
+                                        ),
+                                        const Icon(Icons.arrow_forward_ios, size: 16),
+                                      ],
+                                    ),
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => GroupDetailScreen(group: group),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                )),
+                                const SizedBox(height: 8),
+                                
+
+                              ],
                               const SizedBox(height: 16),
                             ],
                           );
