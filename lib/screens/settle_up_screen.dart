@@ -6,6 +6,9 @@ import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/group_model.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:splitzy/models/settlement_model.dart';
+import 'package:flutter/foundation.dart';
+import 'package:splitzy/services/calculation_isolates.dart';
 
 class SettleUpScreen extends StatefulWidget {
   const SettleUpScreen({super.key});
@@ -30,46 +33,32 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
   }
 
   // Calculate settlement amounts from expenses
-  Map<String, dynamic> _calculateSettlements(List<ExpenseModel> expenses, String currentUserId, Map<String, GroupModel> groups) {
-    Map<String, double> balances = {};
-    Map<String, String> memberNames = {};
+  Future<Map<String, dynamic>> _calculateSettlementsAsync(
+    List<ExpenseModel> expenses,
+    String currentUserId,
+    Map<String, GroupModel> groups,
+  ) async {
+    // Prepare plain maps for isolate
+    final expenseMaps = expenses.map((e) => e.toMap()).toList();
+    final balances = await compute(balancesFromExpenseMaps, expenseMaps);
 
-    // Initialize current user
-    balances[currentUserId] = 0.0;
-
-    for (final expense in expenses) {
-      // Get group for member names
-      final group = groups[expense.groupId];
-      if (group != null) {
-        memberNames.addAll(group.memberNames);
-      }
-
-      // Add payer name
-      memberNames[expense.payer] = expense.payerName;
-
-      // Calculate balances
-      for (final entry in expense.split.entries) {
-        final memberId = entry.key;
-        final amount = entry.value;
-
-        balances[memberId] = (balances[memberId] ?? 0.0) - amount;
-        if (memberId != expense.payer) {
-          balances[expense.payer] = (balances[expense.payer] ?? 0.0) + amount;
-        }
-      }
+    // Gather member names (small map; fine on UI thread)
+    final Map<String, String> memberNames = {};
+    for (final g in groups.values) {
+      memberNames.addAll(g.memberNames);
+    }
+    for (final e in expenses) {
+      memberNames[e.payer] = e.payerName;
     }
 
     // Separate into you owe and owes you
-    Map<String, double> youOwe = {};
-    Map<String, double> owesYou = {};
-
+    final Map<String, double> youOwe = {};
+    final Map<String, double> owesYou = {};
     balances.forEach((memberId, balance) {
       if (memberId != currentUserId && balance != 0) {
         if (balance > 0) {
-          // This person owes you
           owesYou[memberId] = balance;
         } else {
-          // You owe this person
           youOwe[memberId] = -balance;
         }
       }
@@ -146,7 +135,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                     groups[group.id] = group;
                   }
 
-                  final settlements = _calculateSettlements(expenses, currentUser.uid, groups);
+                  // Run heavy calc off the UI thread
+                  final settlements = await _calculateSettlementsAsync(expenses, currentUser.uid, groups);
                   final youOweMap = settlements['youOwe'] as Map<String, double>;
                   final owesYouMap = settlements['owesYou'] as Map<String, double>;
                   final memberNames = settlements['memberNames'] as Map<String, String>;
@@ -365,12 +355,55 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
+              // We need to create a SettlementModel entry. Ask user for group if ambiguous.
+              final auth = Provider.of<AuthService>(context, listen: false);
+              final db = Provider.of<DatabaseService>(context, listen: false);
+              final currentUser = auth.currentUser;
+              if (currentUser == null) return;
+
+              // Load groups once to find a group containing both users. If none, let user pick.
+              GroupModel? selectedGroup;
+              try {
+                final groupsSnapshot = await db.getUserGroups(currentUser.uid).first;
+                final candidate = groupsSnapshot.firstWhere(
+                  (g) => g.members.contains(currentUser.uid) && g.members.contains(userId),
+                  orElse: () => groupsSnapshot.isNotEmpty ? groupsSnapshot.first : GroupModel(
+                    id: '', name: 'Personal', members: [], memberNames: {}, createdBy: currentUser.uid,
+                  ),
+                );
+                if (candidate.id.isNotEmpty) {
+                  selectedGroup = candidate;
+                } else {
+                  // Show simple picker dialog if needed
+                  selectedGroup = await _pickGroup(groupsSnapshot);
+                }
+              } catch (_) {}
+
+              if (!mounted) return;
+              if (selectedGroup == null) return;
+
+              final youPay = true; // current user marks as paid to [name]
+              final settlement = SettlementModel.create(
+                fromUser: youPay ? currentUser.uid : userId,
+                fromUserName: youPay ? (currentUser.displayName) : name,
+                toUser: youPay ? userId : currentUser.uid,
+                toUserName: youPay ? name : (currentUser.displayName),
+                amount: amount,
+                groupId: selectedGroup!.id,
+                groupName: selectedGroup!.name,
+                paymentMethod: 'Manual',
+              ).copyWith(status: SettlementStatus.completed);
+
+              final success = await db.addSettlement(settlement);
+              if (!mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Marked ₹${amount.toStringAsFixed(2)} with $name as settled'),
-                  backgroundColor: Colors.green,
+                  content: Text(success
+                      ? 'Marked ₹${amount.toStringAsFixed(2)} with $name as settled'
+                      : 'Failed to record settlement'),
+                  backgroundColor: success ? Colors.green : Colors.red,
                   behavior: SnackBarBehavior.floating,
                 ),
               );
@@ -380,6 +413,41 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
         ],
       ),
     );
+  }
+
+  Future<GroupModel?> _pickGroup(List<GroupModel> groups) async {
+    if (groups.isEmpty) return null;
+    GroupModel? chosen;
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Select Group'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: groups.length,
+            itemBuilder: (context, index) {
+              final g = groups[index];
+              return ListTile(
+                title: Text(g.name),
+                onTap: () {
+                  chosen = g;
+                  Navigator.of(ctx).pop();
+                },
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          )
+        ],
+      ),
+    );
+    return chosen;
   }
 
   Future<void> _pay(String userId, String name, double amount) async {

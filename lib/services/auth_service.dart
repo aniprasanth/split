@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:splitzy/models/user_model.dart';
 import 'package:logger/logger.dart';
+import 'dart:async';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -27,6 +28,7 @@ class AuthService extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get currentUserId => currentFirebaseUser?.uid;
+  bool get isSigningIn => _isSigningIn;
 
   AuthService() {
     _init();
@@ -143,14 +145,16 @@ class AuthService extends ChangeNotifier {
 
       final GoogleSignInAuthentication googleAuth = await googleUser
           .authentication
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Google authentication timed out'));
 
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
         accessToken: googleAuth.accessToken,
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth
+          .signInWithCredential(credential)
+          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Firebase sign-in timed out'));
       _currentGoogleUser = googleUser;
 
       if (userCredential.user != null) {
@@ -161,12 +165,22 @@ class AuthService extends ChangeNotifier {
           photoUrl: userCredential.user!.photoURL ?? googleUser.photoUrl,
         );
 
-        await _saveUserToFirestore(splitzyUser);
+        // Saving user can also hang on poor networks; guard with timeout
+        await _saveUserToFirestore(splitzyUser).timeout(
+          const Duration(seconds: 20),
+          onTimeout: () => throw TimeoutException('Saving user timed out'),
+        );
         _currentSplitzyUser = splitzyUser;
       }
 
       _logger.i('Google sign-in successful');
       return userCredential;
+    } on TimeoutException catch (e) {
+      _logger.e('Timeout during Google sign-in: ${e.message}');
+      _setError(e.message ?? 'Operation timed out');
+      // Best-effort cleanup
+      try { await _googleSignIn.disconnect(); } catch (_) {}
+      return null;
     } on FirebaseAuthException catch (e) {
       _logger.e('Firebase Auth error: ${e.code} - ${e.message}');
       _setError('Authentication failed: ${e.message}');
@@ -427,3 +441,4 @@ class AuthService extends ChangeNotifier {
     }
   }
 }
+

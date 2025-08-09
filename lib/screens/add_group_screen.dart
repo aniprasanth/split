@@ -261,18 +261,13 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
           },
         );
       } else {
-        final errorMsg = dbService.errorMessage ?? 'Failed to create group';
-        _showErrorSnackBar(errorMsg);
-        debugPrint('createGroup returned false: $errorMsg');
+        _showErrorSnackBar(dbService.errorMessage ?? 'Failed to create group');
       }
     } catch (e) {
       if (!mounted) return;
-      _showErrorSnackBar('Failed to create group. Please try again.');
-      debugPrint('Exception in _saveGroup: $e');
+      _showErrorSnackBar('Error creating group: $e');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -413,3 +408,4 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
     );
   }
 }
+

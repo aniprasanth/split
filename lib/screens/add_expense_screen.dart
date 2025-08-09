@@ -7,6 +7,7 @@ import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/services/contacts_service.dart';
 import 'package:splitzy/utils/validators.dart';
+import 'package:splitzy/utils/split_utils.dart';
 
 class AddExpenseScreen extends StatefulWidget {
   final GroupModel? group;
@@ -108,7 +109,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         title: const Text('Add Expense'),
         actions: [
           TextButton(
-            onPressed: _isLoading ? null : () { FocusScope.of(context).unfocus(); _saveExpense(); },
+            onPressed: _isLoading
+                ? null
+                : () {
+                    FocusScope.of(context).unfocus();
+                    _saveExpense();
+                  },
             child: _isLoading
                 ? const SizedBox(
               width: 16,
@@ -154,7 +160,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           hintText: 'Choose a group',
                         ),
                         items: [
-                          DropdownMenuItem<GroupModel?>(
+                          const DropdownMenuItem<GroupModel?>(
                             value: null,
                             child: Text('None'),
                           ),
@@ -165,24 +171,26 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             );
                           })
                         ],
-                        onChanged: _isLoading ? null : (group) {
-                          setState(() {
-                            _selectedGroup = group;
-                            if (group != null) {
-                              _initializeGroupData();
-                            } else {
-                              // For non-group expense, reset to current user only
-                              final authService = Provider.of<AuthService>(context, listen: false);
-                              final currentUser = authService.currentUser;
-                              if (currentUser != null) {
-                                _availableMembers = [currentUser.uid];
-                                _memberNames = {currentUser.uid: currentUser.displayName};
-                                _selectedPayer = currentUser.uid;
-                                _selectedMembers = [currentUser.uid];
-                              }
-                            }
-                          });
-                        },
+                        onChanged: _isLoading
+                            ? null
+                            : (group) {
+                                setState(() {
+                                  _selectedGroup = group;
+                                  if (group != null) {
+                                    _initializeGroupData();
+                                  } else {
+                                    // For non-group expense, reset to current user only
+                                    final authService = Provider.of<AuthService>(context, listen: false);
+                                    final currentUser = authService.currentUser;
+                                    if (currentUser != null) {
+                                      _availableMembers = [currentUser.uid];
+                                      _memberNames = {currentUser.uid: currentUser.displayName};
+                                      _selectedPayer = currentUser.uid;
+                                      _selectedMembers = [currentUser.uid];
+                                    }
+                                  }
+                                });
+                              },
                         validator: (value) => null,
                       ),
                   ],
@@ -228,6 +236,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Only show payer and split UI if a group is selected
             if (_selectedGroup != null) ...[
               // Paid by
               Card(
@@ -273,6 +282,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           ),
                           Row(
                             children: [
+                              // Block adding members when group is None. Here, group != null, so allow.
                               TextButton.icon(
                                 onPressed: _isLoading ? null : _showAddPersonDialog,
                                 icon: const Icon(Icons.person_add),
@@ -314,10 +324,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       )),
                       if (_selectedMembers.isNotEmpty) ...[
                         const Divider(),
-                        Text(
-                          'Split: ₹${_calculateSplitAmount().toStringAsFixed(2)} per person',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        Builder(builder: (_) {
+                          final amount = double.tryParse(_amountController.text) ?? 0.0;
+                          final splitMap = SplitUtils.computeEqualSplit(amount, _selectedMembers);
+                          final perPerson = _selectedMembers.isEmpty
+                              ? 0.0
+                              : (splitMap[_selectedMembers.first] ?? 0.0);
+                          return Text(
+                            'Split: ₹${perPerson.toStringAsFixed(2)} per person',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          );
+                        }),
                       ],
                     ],
                   ),
@@ -358,6 +375,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _showAddPersonDialog() {
+    // Prevent adding members when group is None
+    if (_selectedGroup == null) {
+      _showErrorSnackBar('Select a group to add members');
+      return;
+    }
     final contactsService = Provider.of<ContactsService>(context, listen: false);
 
     showDialog(
@@ -448,6 +470,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _addPersonToExpense(String name) {
+    if (_selectedGroup == null) return; // safety
     if (!_availableMembers.contains(name)) {
       setState(() {
         _availableMembers.add(name);
@@ -457,13 +480,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
   }
 
-  double _calculateSplitAmount() {
-    if (_selectedMembers.isEmpty || _amountController.text.trim().isEmpty) {
-      return 0.0;
-    }
-    final amount = double.tryParse(_amountController.text) ?? 0.0;
-    return amount / _selectedMembers.length;
-  }
+  // Removed per-call split calculation in build that could cause heavy rebuild loops.
 
   Future<void> _saveExpense() async {
     // Prevent multiple simultaneous calls
@@ -508,17 +525,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         throw Exception('Amount must be greater than 0');
       }
 
-      // Debug logging (only in debug mode)
-      if (kDebugMode) {
-        debugPrint('=== Adding Expense ===');
-        debugPrint('Group: ${_selectedGroup?.name ?? 'Non-group expense'}');
-        debugPrint('Description: $description');
-        debugPrint('Amount: ₹$amount');
-        debugPrint('Paid by: $_selectedPayer');
-        debugPrint('Split between: $_selectedMembers');
-        debugPrint('Split amount per person: ₹${(amount / _selectedMembers.length).toStringAsFixed(2)}');
-      }
-
       // Get auth service to get current user info
       final authService = Provider.of<AuthService>(context, listen: false);
       final currentUser = authService.currentUser;
@@ -527,11 +533,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         throw Exception('User not authenticated');
       }
 
-      // Calculate split amounts
-      final splitAmount = amount / _selectedMembers.length;
-      final splitMap = <String, double>{};
-      for (final memberId in _selectedMembers) {
-        splitMap[memberId] = splitAmount;
+      // Calculate split amounts with proper rounding
+      Map<String, double> splitMap;
+      if (_selectedGroup != null) {
+        splitMap = SplitUtils.computeEqualSplit(amount, _selectedMembers);
+      } else {
+        // Non-group expense: split only among selected people (should typically be 2 people)
+        splitMap = SplitUtils.adjustCustomSplits(
+          amount,
+          {
+            for (final memberId in _selectedMembers) memberId: amount / _selectedMembers.length,
+          },
+        );
       }
 
       // Create expense model using the factory method
@@ -545,8 +558,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         date: DateTime.now(),
       );
 
-      // Save to database using Provider
+      // Save to database using Provider (async write)
       final databaseService = Provider.of<DatabaseService>(context, listen: false);
+      // Move DB write to async and keep UI responsive
       final success = await databaseService.addExpense(expense);
 
       if (!success) {
@@ -568,10 +582,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       Navigator.pop(context, true); // Return true to indicate success
 
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error saving expense: $e');
-      }
-
       if (!mounted) return;
 
       _showErrorSnackBar('Failed to add expense. Please try again.');
@@ -594,3 +604,4 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 }
+

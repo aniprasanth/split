@@ -225,6 +225,24 @@ class LocalStorageService {
     }
   }
 
+  /// Upsert a single expense into the cached list for a group
+  static Future<void> upsertCachedExpense(String groupId, ExpenseModel expense) async {
+    try {
+      final current = await getCachedExpenses(groupId);
+      final idx = current.indexWhere((e) => e.id == expense.id);
+      if (idx >= 0) {
+        current[idx] = expense;
+      } else {
+        current.insert(0, expense);
+      }
+      final expenseMaps = current.map((e) => e.toMap()).toList();
+      await _expensesBoxInstance?.put('expenses_$groupId', expenseMaps);
+      _logger.d('Cached expense upserted for group $groupId: ${expense.id}');
+    } catch (e) {
+      _logger.e('Error upserting cached expense: $e');
+    }
+  }
+
   /// Cache user data
   static Future<void> cacheUsers(List<SplitzyUser> users) async {
     try {

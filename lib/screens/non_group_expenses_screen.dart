@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/models/expense_model.dart';
+import 'package:splitzy/screens/edit_expense_screen.dart';
 
 class NonGroupExpensesScreen extends StatelessWidget {
   const NonGroupExpensesScreen({super.key});
@@ -152,6 +153,19 @@ class NonGroupExpensesScreen extends StatelessWidget {
                       ),
                     ],
                   ),
+                  onTap: () async {
+                    final updated = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => EditExpenseScreen(expense: expense),
+                      ),
+                    );
+                    if (updated == true) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Expense updated')),
+                      );
+                    }
+                  },
                 ),
               );
             },
@@ -161,3 +175,4 @@ class NonGroupExpensesScreen extends StatelessWidget {
     );
   }
 }
+

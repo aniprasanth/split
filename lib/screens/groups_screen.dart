@@ -15,6 +15,7 @@ class GroupsScreen extends StatefulWidget {
 class _GroupsScreenState extends State<GroupsScreen> {
   List<GroupModel> groups = [];
   bool isLoading = true;
+  bool _isCreating = false;
 
   @override
   void initState() {
@@ -96,12 +97,14 @@ class _GroupsScreenState extends State<GroupsScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                _createGroup(nameController.text.trim());
-                Navigator.pop(context);
-              }
-            },
+            onPressed: _isCreating
+                ? null
+                : () {
+                    if (nameController.text.trim().isNotEmpty) {
+                      _createGroup(nameController.text.trim());
+                      Navigator.pop(context);
+                    }
+                  },
             child: const Text('Create'),
           ),
         ],
@@ -116,6 +119,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     final dbService = Provider.of<DatabaseService>(context, listen: false);
 
     try {
+      setState(() => _isCreating = true);
       // Get current user from auth service
       final currentUser = authService.currentUser;
 
@@ -126,6 +130,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
             backgroundColor: Colors.red,
           ),
         );
+        setState(() => _isCreating = false);
         return;
       }
 
@@ -166,6 +171,10 @@ class _GroupsScreenState extends State<GroupsScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _isCreating = false);
+      }
     }
   }
 

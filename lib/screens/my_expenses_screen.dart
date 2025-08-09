@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/models/expense_model.dart';
+import 'package:splitzy/screens/edit_expense_screen.dart';
 
 class MyExpensesScreen extends StatefulWidget {
   const MyExpensesScreen({super.key});
@@ -427,6 +428,22 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
               ],
             ),
             isThreeLine: true,
+            onTap: () async {
+              // Try to find a group for this expense if any is loaded on this screen context (optional)
+              final updated = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EditExpenseScreen(
+                    expense: expense,
+                  ),
+                ),
+              );
+              if (updated == true && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Expense updated')),
+                );
+              }
+            },
           ),
         )),
       ],
@@ -574,3 +591,4 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
     );
   }
 }
+

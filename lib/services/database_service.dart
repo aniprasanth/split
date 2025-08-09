@@ -461,12 +461,19 @@ class DatabaseService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
       
+      // Write to group subcollection
       await _db
           .collection('groups')
           .doc(settlement.groupId)
           .collection('settlements')
           .doc(settlement.id)
           .set(settlement.toMap());
+      // Write to root collection for global queries/history
+      await _db.collection('settlements').doc(settlement.id).set(settlement.toMap());
+      // Touch group updatedAt to refresh streams ordering
+      await _db.collection('groups').doc(settlement.groupId).update({
+        'updatedAt': DateTime.now().toIso8601String(),
+      });
           
       _logger.i('Settlement added successfully');
       return true;
@@ -591,3 +598,4 @@ class DatabaseService extends ChangeNotifier {
     return settlements;
   }
 }
+

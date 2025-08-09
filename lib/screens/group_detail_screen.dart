@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:splitzy/models/group_model.dart';
 import 'package:splitzy/screens/add_expense_screen.dart';
 import 'package:splitzy/services/database_service.dart';
+import 'package:splitzy/models/expense_model.dart';
+import 'package:splitzy/models/settlement_model.dart';
+import 'package:splitzy/screens/edit_expense_screen.dart';
 
 class GroupDetailScreen extends StatefulWidget {
   final GroupModel group;
@@ -122,57 +125,73 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
   }
 
   Widget _buildExpensesTab() {
-    final expenses = [
-      {'title': 'Dinner at Restaurant', 'amount': '₹1,200', 'paidBy': 'You', 'date': 'Today'},
-      {'title': 'Cab Fare', 'amount': '₹350', 'paidBy': 'Alice', 'date': 'Yesterday'},
-      {'title': 'Hotel Booking', 'amount': '₹8,000', 'paidBy': 'Bob', 'date': '2 days ago'},
-    ];
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+    return StreamBuilder<List<ExpenseModel>>(
+      stream: dbService.getGroupExpenses(currentGroup.id),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    if (expenses.isEmpty) {
-      return _buildEmptyExpenses();
-    }
+        final expenses = snapshot.data ?? [];
+        if (expenses.isEmpty) {
+          return _buildEmptyExpenses();
+        }
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: expenses.length,
-      itemBuilder: (context, index) {
-        final expense = expenses[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.secondary,
-              child: Icon(
-                Icons.receipt,
-                color: Theme.of(context).colorScheme.onSecondary,
-              ),
-            ),
-            title: Text(
-              expense['title']!,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text('Paid by ${expense['paidBy']} • ${expense['date']}'),
-                const SizedBox(height: 4),
-                Text(
-                  expense['amount']!,
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: expenses.length,
+          itemBuilder: (context, index) {
+            final expense = expenses[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(16),
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.secondary,
+                  child: Icon(
+                    Icons.receipt,
+                    color: Theme.of(context).colorScheme.onSecondary,
+                  ),
+                ),
+                title: Text(
+                  expense.description,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 4),
+                    Text('Paid by ${expense.payerName} • ${expense.date.toLocal().toString().split(' ').first}')
+                  ],
+                ),
+                trailing: Text(
+                  '₹${expense.amount.toStringAsFixed(2)}',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
                   ),
                 ),
-              ],
-            ),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            onTap: () {
-              // Navigate to expense detail
-            },
-          ),
+                onTap: () async {
+                  final updated = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditExpenseScreen(
+                        expense: expense,
+                        group: currentGroup,
+                      ),
+                    ),
+                  );
+                  if (updated == true && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Expense updated')),
+                    );
+                  }
+                },
+              ),
+            );
+          },
         );
       },
     );
@@ -209,51 +228,84 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
   }
 
   Widget _buildBalancesTab() {
-    final balances = [
-      {'name': 'Alice', 'amount': '₹500', 'owes': false},
-      {'name': 'Bob', 'amount': '₹300', 'owes': true},
-    ];
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+    return StreamBuilder<List<ExpenseModel>>(
+      stream: dbService.getGroupExpenses(currentGroup.id),
+      builder: (context, expenseSnapshot) {
+        if (expenseSnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    if (balances.isEmpty) {
-      return _buildEmptyBalances();
-    }
+        final expenses = expenseSnapshot.data ?? [];
+        // Start with balances from expenses
+        final balances = dbService.calculateBalances(expenses);
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: balances.length,
-      itemBuilder: (context, index) {
-        final balance = balances[index];
-        final owes = balance['owes'] as bool;
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: CircleAvatar(
-              backgroundColor: owes ? Colors.red.shade100 : Colors.green.shade100,
-              child: Icon(
-                owes ? Icons.arrow_upward : Icons.arrow_downward,
-                color: owes ? Colors.red.shade700 : Colors.green.shade700,
-              ),
-            ),
-            title: Text(
-              balance['name']! as String,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              owes ? 'owes you' : 'you owe',
-              style: TextStyle(
-                color: owes ? Colors.green.shade600 : Colors.red.shade600,
-              ),
-            ),
-            trailing: Text(
-              balance['amount']! as String,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: owes ? Colors.green.shade600 : Colors.red.shade600,
-              ),
-            ),
-          ),
+        return StreamBuilder<List<SettlementModel>>(
+          stream: dbService.getSettlements(currentGroup.id),
+          builder: (context, settlementSnapshot) {
+            if (settlementSnapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final settlements = settlementSnapshot.data ?? [];
+            // Apply completed settlements to balances
+            for (final s in settlements.where((s) => s.status == SettlementStatus.completed)) {
+              balances[s.fromUser] = (balances[s.fromUser] ?? 0) + s.amount;
+              balances[s.toUser] = (balances[s.toUser] ?? 0) - s.amount;
+            }
+
+            // Remove near-zero balances
+            final entries = balances.entries
+                .where((e) => e.value.abs() > 0.01)
+                .toList()
+              ..sort((a, b) => b.value.compareTo(a.value));
+
+            if (entries.isEmpty) {
+              return _buildEmptyBalances();
+            }
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: entries.length,
+              itemBuilder: (context, index) {
+                final entry = entries[index];
+                final amount = entry.value;
+                final owesYou = amount > 0; // positive means they owe you
+                final name = currentGroup.memberNames[entry.key] ?? entry.key;
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: CircleAvatar(
+                      backgroundColor: owesYou ? Colors.green.shade100 : Colors.red.shade100,
+                      child: Icon(
+                        owesYou ? Icons.arrow_downward : Icons.arrow_upward,
+                        color: owesYou ? Colors.green.shade700 : Colors.red.shade700,
+                      ),
+                    ),
+                    title: Text(
+                      name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Text(
+                      owesYou ? 'owes you' : 'you owe',
+                      style: TextStyle(
+                        color: owesYou ? Colors.green.shade600 : Colors.red.shade600,
+                      ),
+                    ),
+                    trailing: Text(
+                      '₹${amount.abs().toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: owesYou ? Colors.green.shade600 : Colors.red.shade600,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
         );
       },
     );

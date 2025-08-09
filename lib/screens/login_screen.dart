@@ -167,7 +167,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ],
       ),
       child: ElevatedButton.icon(
-        onPressed: (_isLoading || authService.isLoading)
+        onPressed: (_isLoading || authService.isLoading || authService.isSigningIn)
             ? null
             : () => _handleGoogleSignIn(authService),
         style: ElevatedButton.styleFrom(
@@ -178,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             borderRadius: BorderRadius.circular(28),
           ),
         ),
-        icon: (_isLoading || authService.isLoading)
+        icon: (_isLoading || authService.isLoading || authService.isSigningIn)
             ? const SizedBox(
           width: 20,
           height: 20,
