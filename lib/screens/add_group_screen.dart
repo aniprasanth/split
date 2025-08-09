@@ -261,19 +261,6 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
     }
   }
 
-  void _addManualMember(String name) {
-    final memberId = 'member_${name.toLowerCase().replaceAll(' ', '_')}';
-    if (!_members.contains(memberId)) {
-      setState(() {
-        _members.add(memberId);
-        _memberNames[memberId] = name;
-      });
-      _newMemberController.clear();
-    } else {
-      _showErrorSnackBar('Member "$name" is already in the group.');
-    }
-  }
-
   void _showContactsDialog() {
     final contactsService = Provider.of<ContactsService>(context, listen: false);
 

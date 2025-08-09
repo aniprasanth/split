@@ -47,7 +47,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       // For non-group expenses, initialize with current user
       if (_selectedGroup == null) {
         _availableMembers = [currentUser.uid];
-        _memberNames = {currentUser.uid: currentUser.name.isNotEmpty ? currentUser.name : 'You'};
+        _memberNames = {currentUser.uid: currentUser.displayName};
         _selectedMembers = [currentUser.uid];
       }
     }
@@ -164,7 +164,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             final currentUser = authService.currentUser;
                             if (currentUser != null) {
                               _availableMembers = [currentUser.uid];
-                              _memberNames = {currentUser.uid: currentUser.name.isNotEmpty ? currentUser.name : 'You'};
+                              _memberNames = {currentUser.uid: currentUser.displayName};
                               _selectedPayer = currentUser.uid;
                               _selectedMembers = [currentUser.uid];
                             }
