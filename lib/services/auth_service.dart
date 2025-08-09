@@ -242,14 +242,27 @@ class AuthService extends ChangeNotifier {
           accessToken: googleAuth.accessToken,
         );
 
-        await _auth.signInWithCredential(credential);
+        final userCredential = await _auth.signInWithCredential(credential);
         _currentGoogleUser = googleUser;
+        
+        // Ensure user data is loaded
+        if (userCredential.user != null) {
+          await _loadCurrentUser();
+        }
+        
         return true;
       }
 
       return false;
     } catch (e) {
       _logger.w('Silent sign-in failed: $e');
+      // Clear any stale auth state
+      try {
+        await _googleSignIn.signOut();
+        await _auth.signOut();
+      } catch (signOutError) {
+        _logger.w('Error clearing auth state: $signOutError');
+      }
       return false;
     }
   }

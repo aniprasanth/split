@@ -131,11 +131,26 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
                       title: TextFormField(
                         controller: _newMemberController,
                         decoration: const InputDecoration(hintText: 'Enter member name'),
-                        validator: (value) => Validators.validateName(value, minLength: 2, maxLength: 50, fieldName: 'Member Name'),
+                        validator: (value) => value != null && value.trim().isNotEmpty ? Validators.validateName(value, minLength: 2, maxLength: 50, fieldName: 'Member Name') : null,
+                        onFieldSubmitted: (value) {
+                          if (value.trim().isNotEmpty) {
+                            _addManualMember(value.trim());
+                          }
+                        },
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          IconButton(
+                            icon: const Icon(Icons.add, color: Colors.green),
+                            onPressed: _isLoading ? null : () {
+                              final name = _newMemberController.text.trim();
+                              if (name.isNotEmpty) {
+                                _addManualMember(name);
+                              }
+                            },
+                            tooltip: 'Add member',
+                          ),
                           IconButton(
                             icon: const Icon(Icons.contacts, color: Colors.blue),
                             onPressed: _isLoading ? null : _showContactsDialog,
@@ -233,6 +248,19 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
     }
   }
 
+  void _addManualMember(String name) {
+    final memberId = 'member_${name.toLowerCase().replaceAll(' ', '_')}';
+    if (!_members.contains(memberId)) {
+      setState(() {
+        _members.add(memberId);
+        _memberNames[memberId] = name;
+      });
+      _newMemberController.clear();
+    } else {
+      _showErrorSnackBar('Member "$name" is already in the group.');
+    }
+  }
+
   void _showContactsDialog() {
     final contactsService = Provider.of<ContactsService>(context, listen: false);
 
@@ -241,79 +269,93 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
       return;
     }
 
+    // Reset search query when opening dialog
+    _contactSearchQuery = null;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Select from Contacts'),
-        content: SizedBox(
-          width: double.maxFinite,
-          height: 400,
-          child: Column(
-            children: [
-              TextField(
-                decoration: const InputDecoration(
-                  hintText: 'Search contacts',
-                  prefixIcon: Icon(Icons.search),
-                ),
-                onChanged: (query) {
-                  setState(() {
-                    _contactSearchQuery = query;
-                  });
-                },
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: Consumer<ContactsService>(
-                  builder: (context, contactsService, child) {
-                    final contacts = _contactSearchQuery == null || _contactSearchQuery!.isEmpty
-                      ? contactsService.contacts
-                      : contactsService.contacts.where((c) => c.displayName.toLowerCase().contains(_contactSearchQuery!.toLowerCase())).toList();
-                    if (contactsService.isLoading) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (contacts.isEmpty) {
-                      return const Center(child: Text('No contacts found'));
-                    }
-                    return ListView.builder(
-                      itemCount: contacts.length,
-                      itemBuilder: (context, index) {
-                        final contact = contacts[index];
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.person),
-                          ),
-                          title: Text(contact.displayName),
-                          subtitle: contactsService.getContactPhone(contact) != null
-                              ? Text(contactsService.getContactPhone(contact)!)
-                              : contactsService.getContactEmail(contact) != null
-                                  ? Text(contactsService.getContactEmail(contact)!)
-                                  : null,
-                          onTap: () {
-                            final name = contact.displayName;
-                            final memberId = 'member_${name.toLowerCase().replaceAll(' ', '_')}';
-                            if (!_members.contains(memberId)) {
-                              setState(() {
-                                _members.add(memberId);
-                                _memberNames[memberId] = name;
-                              });
-                            }
-                            Navigator.of(context).pop();
-                          },
-                        );
-                      },
-                    );
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Select from Contacts'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 400,
+            child: Column(
+              children: [
+                TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Search contacts',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (query) {
+                    setDialogState(() {
+                      _contactSearchQuery = query.trim().toLowerCase();
+                    });
                   },
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Expanded(
+                  child: Consumer<ContactsService>(
+                    builder: (context, contactsService, child) {
+                      if (contactsService.isLoading) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      
+                      final allContacts = contactsService.contacts;
+                      final contacts = (_contactSearchQuery == null || _contactSearchQuery!.isEmpty)
+                        ? allContacts
+                        : allContacts.where((c) => 
+                            c.displayName.toLowerCase().contains(_contactSearchQuery!)).toList();
+                      
+                      if (contacts.isEmpty) {
+                        return const Center(child: Text('No contacts found'));
+                      }
+                      
+                      return ListView.builder(
+                        itemCount: contacts.length,
+                        itemBuilder: (context, index) {
+                          final contact = contacts[index];
+                          return ListTile(
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.person),
+                            ),
+                            title: Text(contact.displayName),
+                            subtitle: contactsService.getContactPhone(contact) != null
+                                ? Text(contactsService.getContactPhone(contact)!)
+                                : contactsService.getContactEmail(contact) != null
+                                    ? Text(contactsService.getContactEmail(contact)!)
+                                    : null,
+                            onTap: () {
+                              final name = contact.displayName;
+                              final memberId = 'member_${name.toLowerCase().replaceAll(' ', '_')}';
+                              if (!_members.contains(memberId)) {
+                                setState(() {
+                                  _members.add(memberId);
+                                  _memberNames[memberId] = name;
+                                });
+                                Navigator.of(context).pop();
+                              } else {
+                                Navigator.of(context).pop();
+                                _showErrorSnackBar('Member "$name" is already in the group.');
+                              }
+                            },
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-        ],
       ),
     );
   }
@@ -342,3 +384,4 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
     );
   }
 }
+

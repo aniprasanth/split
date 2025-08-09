@@ -5,10 +5,8 @@ import 'package:splitzy/screens/settle_up_screen.dart';
 import 'package:splitzy/screens/history_screen.dart';
 import 'package:splitzy/screens/add_group_screen.dart';
 import 'package:splitzy/screens/add_expense_screen.dart';
-import 'package:provider/provider.dart';
-import 'package:splitzy/services/database_service.dart';
-import 'package:splitzy/services/auth_service.dart';
-import 'package:splitzy/models/expense_model.dart';
+import 'package:splitzy/screens/non_group_expenses_screen.dart';
+import 'package:splitzy/screens/my_expenses_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -78,10 +76,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dbService = Provider.of<DatabaseService>(context, listen: false);
-    final authService = Provider.of<AuthService>(context, listen: false);
-    final currentUser = authService.currentUser;
-
     return Scaffold(
       body: PageView(
         controller: _pageController,
@@ -92,65 +86,147 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         children: [
           SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('Non-Group Expenses', style: Theme.of(context).textTheme.titleMedium),
-                ),
-                StreamBuilder<List<ExpenseModel>>(
-                  stream: dbService.getAllExpenses(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final nonGroup = snapshot.data!.where((e) => e.groupId.isEmpty && e.split.length == 2).toList();
-                    if (nonGroup.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('No non-group expenses.'),
-                      );
-                    }
-                    return Column(
-                      children: nonGroup.map((e) => ListTile(
-                        title: Text(e.description),
-                        subtitle: Text('₹${e.amount.toStringAsFixed(2)} • ${e.payerName}'),
-                        trailing: Text('${e.date.day}/${e.date.month}/${e.date.year}'),
-                      )).toList(),
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text('My Expenses', style: Theme.of(context).textTheme.titleMedium),
-                ),
-                StreamBuilder<List<ExpenseModel>>(
-                  stream: dbService.getAllExpenses(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData || currentUser == null) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final myExpenses = snapshot.data!.where((e) => e.payer == currentUser.uid || e.split.keys.contains(currentUser.uid)).toList();
-                    if (myExpenses.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('No expenses found.'),
-                      );
-                    }
-                    return Column(
-                      children: myExpenses.map((e) => ListTile(
-                        title: Text(e.description),
-                        subtitle: Text('₹${e.amount.toStringAsFixed(2)} • ${e.payerName}'),
-                        trailing: Text('${e.date.day}/${e.date.month}/${e.date.year}'),
-                      )).toList(),
-                    );
-                  },
-                ),
-                const SizedBox(height: 24),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 16),
+                  Text(
+                    'Quick Access',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Non-Group Expenses Card
+                  Card(
+                    elevation: 4,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const NonGroupExpensesScreen(),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.receipt_outlined,
+                                color: Colors.blue,
+                                size: 32,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Non-Group Expenses',
+                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'View expenses shared between two people',
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.grey,
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // My Expenses Card
+                  Card(
+                    elevation: 4,
+                    child: InkWell(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MyExpensesScreen(),
+                          ),
+                        );
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.account_balance_wallet_outlined,
+                                color: Colors.green,
+                                size: 32,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'My Expenses',
+                                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'View all your expenses and payments',
+                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_ios,
+                              color: Colors.grey,
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                ],
+              ),
             ),
           ),
           ..._pages.sublist(1),
@@ -212,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: _currentIndex == 3 ? null : FloatingActionButton(
         onPressed: _showAddOptions,
         child: const Icon(Icons.add),
       ),
