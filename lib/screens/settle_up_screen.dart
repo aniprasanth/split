@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:provider/provider.dart';
 import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/auth_service.dart';
-import 'package:splitzy/models/settlement_model.dart';
+import 'package:splitzy/models/expense_model.dart';
+import 'package:splitzy/models/group_model.dart';
 
 class SettleUpScreen extends StatefulWidget {
   const SettleUpScreen({super.key});
@@ -16,58 +16,6 @@ class SettleUpScreen extends StatefulWidget {
 class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // Sample data - in a real app, this would come from your database
-  final List<SettlementItem> _youOwe = [
-    SettlementItem(
-      name: 'Rahul',
-      amount: 150.0,
-      groupName: 'Trip to Goa',
-      avatarColor: Colors.blue,
-      userId: 'user_rahul_123',
-      groupId: 'group_goa_trip',
-      phoneNumber: '+919876543210',
-    ),
-    SettlementItem(
-      name: 'Priya',
-      amount: 75.50,
-      groupName: 'Office Lunch',
-      avatarColor: Colors.purple,
-      userId: 'user_priya_456',
-      groupId: 'group_office_lunch',
-      phoneNumber: '+919876543211',
-    ),
-    SettlementItem(
-      name: 'Amit',
-      amount: 200.0,
-      groupName: 'Weekend Party',
-      avatarColor: Colors.green,
-      userId: 'user_amit_789',
-      groupId: 'group_weekend_party',
-      phoneNumber: '+919876543212',
-    ),
-  ];
-
-  final List<SettlementItem> _owesYou = [
-    SettlementItem(
-      name: 'Aarav',
-      amount: 220.0,
-      groupName: 'Trip to Goa',
-      avatarColor: Colors.orange,
-      userId: 'user_aarav_101',
-      groupId: 'group_goa_trip',
-      phoneNumber: '+919876543213',
-    ),
-    SettlementItem(
-      name: 'Sneha',
-      amount: 120.75,
-      groupName: 'Dinner',
-      avatarColor: Colors.red,
-      userId: 'user_sneha_202',
-      groupId: 'group_dinner',
-      phoneNumber: '+919876543214',
-    ),
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -78,6 +26,59 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  // Calculate settlement amounts from expenses
+  Map<String, Map<String, double>> _calculateSettlements(List<ExpenseModel> expenses, String currentUserId, Map<String, GroupModel> groups) {
+    Map<String, double> balances = {};
+    Map<String, String> memberNames = {};
+    
+    // Initialize current user
+    balances[currentUserId] = 0.0;
+    
+    for (final expense in expenses) {
+      // Get group for member names
+      final group = groups[expense.groupId];
+      if (group != null) {
+        memberNames.addAll(group.memberNames);
+      }
+      
+      // Add payer name
+      memberNames[expense.payer] = expense.payerName;
+      
+      // Calculate balances
+      for (final entry in expense.split.entries) {
+        final memberId = entry.key;
+        final amount = entry.value;
+        
+        balances[memberId] = (balances[memberId] ?? 0.0) - amount;
+        if (memberId != expense.payer) {
+          balances[expense.payer] = (balances[expense.payer] ?? 0.0) + amount;
+        }
+      }
+    }
+    
+    // Separate into you owe and owes you
+    Map<String, double> youOwe = {};
+    Map<String, double> owesYou = {};
+    
+    balances.forEach((memberId, balance) {
+      if (memberId != currentUserId && balance != 0) {
+        if (balance > 0) {
+          // This person owes you
+          owesYou[memberId] = balance;
+        } else {
+          // You owe this person
+          youOwe[memberId] = -balance;
+        }
+      }
+    });
+    
+    return {
+      'youOwe': youOwe,
+      'owesYou': owesYou,
+      'memberNames': memberNames.map((k, v) => MapEntry(k, v.toString())),
+    };
   }
 
   @override
@@ -95,736 +96,285 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Consumer2<AuthService, DatabaseService>(
+        builder: (context, authService, dbService, child) {
+          final currentUser = authService.currentUser;
+          if (currentUser == null) {
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.person_outline, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text('User not authenticated'),
+                ],
+              ),
+            );
+          }
+
+          return StreamBuilder<List<ExpenseModel>>(
+            stream: dbService.getAllExpenses(),
+            builder: (context, expenseSnapshot) {
+              if (expenseSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (expenseSnapshot.hasError) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                      const SizedBox(height: 16),
+                      const Text('Error loading expenses'),
+                    ],
+                  ),
+                );
+              }
+
+              return StreamBuilder<List<GroupModel>>(
+                stream: dbService.getUserGroups(currentUser.uid),
+                builder: (context, groupSnapshot) {
+                  if (groupSnapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final expenses = expenseSnapshot.data ?? [];
+                  final groups = <String, GroupModel>{};
+                  for (final group in groupSnapshot.data ?? []) {
+                    groups[group.id] = group;
+                  }
+
+                  final settlements = _calculateSettlements(expenses, currentUser.uid, groups);
+                  final youOweMap = settlements['youOwe'] as Map<String, double>;
+                  final owesYouMap = settlements['owesYou'] as Map<String, double>;
+                  final memberNames = settlements['memberNames'] as Map<String, String>;
+
+                  return TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildSettlementTab(youOweMap, memberNames, false),
+                      _buildSettlementTab(owesYouMap, memberNames, true),
+                    ],
+                  );
+                },
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSettlementTab(Map<String, double> settlements, Map<String, String> memberNames, bool isOwesYou) {
+    final totalAmount = settlements.values.fold(0.0, (sum, amount) => sum + amount);
+    final color = isOwesYou ? Colors.green : Colors.red;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
         children: [
-          _buildYouOweTab(),
-          _buildOwesYouTab(),
+          // Total amount card
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: color.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: color.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.account_balance_wallet,
+                  color: color.shade600,
+                  size: 32,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isOwesYou ? 'Total owed to you' : 'Total you owe',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: color.shade700,
+                        ),
+                      ),
+                      Text(
+                        '₹${totalAmount.toStringAsFixed(2)}',
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: color.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Settlement items
+          if (settlements.isEmpty) ...[
+            const SizedBox(height: 100),
+            Icon(
+              Icons.celebration,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'All settled up!',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              isOwesYou 
+                ? 'Nobody owes you money' 
+                : 'You don\'t owe anyone money',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey.shade500,
+              ),
+            ),
+          ] else ...[
+            ...settlements.entries.map((entry) => _buildSettlementCard(
+              entry.key,
+              memberNames[entry.key] ?? entry.key,
+              entry.value,
+              isOwesYou,
+            )),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildYouOweTab() {
-    if (_youOwe.isEmpty) {
-      return _buildEmptyState(
-        'No pending payments',
-        'You\'re all settled up! 🎉',
-        Icons.check_circle_outline,
-      );
-    }
-
-    double totalOwed = _youOwe.fold(0, (sum, item) => sum + item.amount);
-
-    return Column(
-      children: [
-        // Total Amount Card
-        Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.red.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.red.shade200),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.account_balance_wallet,
-                color: Colors.red.shade600,
-                size: 32,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total you owe',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.red.shade700,
-                      ),
-                    ),
-                    Text(
-                      '₹${totalOwed.toStringAsFixed(2)}',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.red.shade800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Settlement List
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _youOwe.length,
-            itemBuilder: (context, index) {
-              final item = _youOwe[index];
-              return _buildSettlementCard(
-                item: item,
-                isOwed: false,
-                onPay: () => _initiatePayment(item),
-                onRemind: null,
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOwesYouTab() {
-    if (_owesYou.isEmpty) {
-      return _buildEmptyState(
-        'No pending receivables',
-        'Nobody owes you money right now',
-        Icons.money_off,
-      );
-    }
-
-    double totalReceivable = _owesYou.fold(0, (sum, item) => sum + item.amount);
-
-    return Column(
-      children: [
-        // Total Amount Card
-        Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: Colors.green.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.green.shade200),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.trending_up,
-                color: Colors.green.shade600,
-                size: 32,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total owed to you',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.green.shade700,
-                      ),
-                    ),
-                    Text(
-                      '₹${totalReceivable.toStringAsFixed(2)}',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green.shade800,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Settlement List
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: _owesYou.length,
-            itemBuilder: (context, index) {
-              final item = _owesYou[index];
-              return _buildSettlementCard(
-                item: item,
-                isOwed: true,
-                onPay: null,
-                onRemind: () => _sendReminder(item),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettlementCard({
-    required SettlementItem item,
-    required bool isOwed,
-    VoidCallback? onPay,
-    VoidCallback? onRemind,
-  }) {
+  Widget _buildSettlementCard(String userId, String name, double amount, bool isOwesYou) {
+    final color = isOwesYou ? Colors.green : Colors.red;
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // Avatar
             CircleAvatar(
-              backgroundColor: item.avatarColor.withValues(alpha: 0.2),
+              backgroundColor: color.shade100,
               child: Text(
-                item.name[0].toUpperCase(),
+                name.isNotEmpty ? name[0].toUpperCase() : 'U',
                 style: TextStyle(
-                  color: item.avatarColor,
+                  color: color.shade700,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-
             const SizedBox(width: 16),
-
-            // Details
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isOwed ? '${item.name} owes you' : 'You owe ${item.name}',
-                    style: const TextStyle(
+                    name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
-                      fontSize: 16,
                     ),
                   ),
-                  const SizedBox(height: 4),
                   Text(
-                    '₹${item.amount.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: isOwed ? Colors.green.shade600 : Colors.red.shade600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'From ${item.groupName}',
-                    style: TextStyle(
+                    isOwesYou ? 'owes you' : 'you owe',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Colors.grey.shade600,
-                      fontSize: 12,
                     ),
                   ),
                 ],
               ),
             ),
-
-            // Action Button
-            if (onPay != null)
-              ElevatedButton(
-                onPressed: onPay,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                ),
-                child: const Text('Pay'),
-              )
-            else if (onRemind != null)
-              OutlinedButton(
-                onPressed: onRemind,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                ),
-                child: const Text('Remind'),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(String title, String subtitle, IconData icon) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 80,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Colors.grey.shade600,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade500,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _initiatePayment(SettlementItem item) async {
-    // Show payment options dialog
-    if (mounted) {
-      showModalBottomSheet(
-        context: context,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        builder: (context) => _buildPaymentBottomSheet(item),
-      );
-    }
-  }
-
-  Widget _buildPaymentBottomSheet(SettlementItem item) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            children: [
-              CircleAvatar(
-                backgroundColor: item.avatarColor.withValues(alpha: 0.2),
-                child: Text(
-                  item.name[0].toUpperCase(),
-                  style: TextStyle(
-                    color: item.avatarColor,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '₹${amount.toStringAsFixed(2)}',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
+                    color: color.shade700,
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Pay ${item.name}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    IconButton(
+                      icon: Icon(Icons.message, color: Colors.blue.shade600, size: 20),
+                      onPressed: () => _sendReminder(name, amount, isOwesYou),
+                      tooltip: 'Send reminder',
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
                     ),
-                    Text(
-                      '₹${item.amount.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.red.shade600,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.check_circle, color: Colors.green.shade600, size: 20),
+                      onPressed: () => _markAsSettled(userId, name, amount),
+                      tooltip: 'Mark as settled',
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
                     ),
                   ],
                 ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          // Payment Options
-          _buildPaymentOption(
-            'UPI Payment',
-            'Pay using any UPI app',
-            Icons.phone_android,
-                () => _payWithUPI(item),
-          ),
-
-          const SizedBox(height: 12),
-
-          _buildPaymentOption(
-            'Record Payment',
-            'Mark as paid manually',
-            Icons.check_circle_outline,
-                () => _recordPayment(item),
-          ),
-
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentOption(
-      String title,
-      String subtitle,
-      IconData icon,
-      VoidCallback onTap,
-      ) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 24),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ),
-            const Icon(Icons.arrow_forward_ios, size: 16),
           ],
         ),
       ),
     );
   }
 
-  Future<void> _payWithUPI(SettlementItem item) async {
-    Navigator.pop(context); // Close bottom sheet
-
-    // Generate UPI payment URL
-    final upiUrl = _generateUpiUrl(
-      receiverUpiId: 'receiver@upi', // This should come from user data
-      receiverName: item.name,
-      amount: item.amount,
-      note: 'Payment for ${item.groupName}',
-    );
-
-    try {
-      final Uri uri = Uri.parse(upiUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-
-        // Show confirmation dialog after UPI app opens
-        await Future.delayed(const Duration(seconds: 2));
-        if (mounted) {
-          _showPaymentConfirmationDialog(item);
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No UPI app found'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to open UPI app: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  String _generateUpiUrl({
-    required String receiverUpiId,
-    required String receiverName,
-    required double amount,
-    required String note,
-  }) {
-    final encodedNote = Uri.encodeComponent(note);
-    final encodedName = Uri.encodeComponent(receiverName);
-
-    return 'upi://pay?pa=$receiverUpiId&pn=$encodedName&am=$amount&tn=$encodedNote&cu=INR';
-  }
-
-  void _showPaymentConfirmationDialog(SettlementItem item) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Payment Confirmation'),
-        content: Text('Did you successfully pay ₹${item.amount.toStringAsFixed(2)} to ${item.name}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _markAsSettled(item);
-            },
-            child: const Text('Yes, Paid'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _recordPayment(SettlementItem item) {
-    Navigator.pop(context); // Close bottom sheet
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Record Payment'),
-        content: Text('Mark payment of ₹${item.amount.toStringAsFixed(2)} to ${item.name} as completed?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _markAsSettled(item);
-            },
-            child: const Text('Mark as Paid'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _markAsSettled(SettlementItem item) async {
-    try {
-      // Get current user
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final currentUser = authService.currentUser;
-
-      if (currentUser == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please sign in to settle payments'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return;
-      }
-
-      // Create settlement record
-      final settlement = SettlementModel.create(
-        fromUser: currentUser.uid,
-        fromUserName: currentUser.displayName,
-        toUser: item.userId ?? 'unknown',
-        toUserName: item.name,
-        amount: item.amount,
-        groupId: item.groupId ?? 'unknown',
-        groupName: item.groupName,
-        paymentMethod: 'Manual',
-        notes: 'Marked as settled via app',
-      );
-
-      // Update in database
-      final databaseService = Provider.of<DatabaseService>(context, listen: false);
-      final success = await databaseService.addSettlement(settlement);
-
-      if (success && mounted) {
-        setState(() {
-          _youOwe.remove(item);
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Payment to ${item.name} marked as completed'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(databaseService.errorMessage ?? 'Failed to update settlement'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating settlement: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _sendReminder(SettlementItem item) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Send Reminder'),
-        content: Text('How would you like to send a payment reminder to ${item.name} for ₹${item.amount.toStringAsFixed(2)}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _sendReminderViaWhatsApp(item);
-            },
-            child: const Text('WhatsApp'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _sendReminderViaSMS(item);
-            },
-            child: const Text('SMS'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _sendReminderMessage(item);
-            },
-            child: const Text('Copy Text'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _sendReminderMessage(SettlementItem item) {
-    final message = 'Hi ${item.name}! This is a friendly reminder that you owe ₹${item.amount.toStringAsFixed(2)} for ${item.groupName}. Please settle up when convenient. Thanks! - Splitzy';
-
-    // Copy to clipboard
+  void _sendReminder(String name, double amount, bool isOwesYou) {
+    final message = isOwesYou 
+        ? 'Hi $name! Just a friendly reminder that you owe me ₹${amount.toStringAsFixed(2)}. Thanks!'
+        : 'Hi $name! I owe you ₹${amount.toStringAsFixed(2)}. Let me know when you\'d like me to settle up!';
+    
     Clipboard.setData(ClipboardData(text: message));
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Reminder message copied to clipboard'),
-          backgroundColor: Colors.blue,
-        ),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Reminder message copied to clipboard'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
-  void _sendReminderViaWhatsApp(SettlementItem item) async {
-    final message = 'Hi ${item.name}! This is a friendly reminder that you owe ₹${item.amount.toStringAsFixed(2)} for ${item.groupName}. Please settle up when convenient. Thanks! - Splitzy';
-    final encodedMessage = Uri.encodeComponent(message);
-    final phoneNumber = item.phoneNumber ?? '';
-
-    final whatsappUrl = phoneNumber.isNotEmpty
-        ? 'https://wa.me/$phoneNumber?text=$encodedMessage'
-        : 'https://wa.me/?text=$encodedMessage';
-
-    try {
-      final uri = Uri.parse(whatsappUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        _sendReminderMessage(item);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('WhatsApp not available. Message copied to clipboard instead.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      _sendReminderMessage(item);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open WhatsApp. Message copied to clipboard instead.'),
-            backgroundColor: Colors.orange,
+  void _markAsSettled(String userId, String name, double amount) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Mark as Settled'),
+        content: Text('Mark the ₹${amount.toStringAsFixed(2)} with $name as settled?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
           ),
-        );
-      }
-    }
+          ElevatedButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Marked ₹${amount.toStringAsFixed(2)} with $name as settled'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
+            child: const Text('Mark Settled'),
+          ),
+        ],
+      ),
+    );
   }
-
-  void _sendReminderViaSMS(SettlementItem item) async {
-    final message = 'Hi ${item.name}! This is a friendly reminder that you owe ₹${item.amount.toStringAsFixed(2)} for ${item.groupName}. Please settle up when convenient. Thanks! - Splitzy';
-    final phoneNumber = item.phoneNumber ?? '';
-
-    if (phoneNumber.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Phone number not available for this contact'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-      _sendReminderMessage(item);
-      return;
-    }
-
-    final smsUrl = 'sms:$phoneNumber?body=${Uri.encodeComponent(message)}';
-
-    try {
-      final uri = Uri.parse(smsUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
-        _sendReminderMessage(item);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('SMS not available. Message copied to clipboard instead.'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      _sendReminderMessage(item);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not open SMS. Message copied to clipboard instead.'),
-            backgroundColor: Colors.orange,
-          ),
-        );
-      }
-    }
-  }
-}
-
-class SettlementItem {
-  final String name;
-  final double amount;
-  final String groupName;
-  final Color avatarColor;
-  final String? userId;
-  final String? groupId;
-  final String? phoneNumber;
-
-  SettlementItem({
-    required this.name,
-    required this.amount,
-    required this.groupName,
-    required this.avatarColor,
-    this.userId,
-    this.groupId,
-    this.phoneNumber,
-  });
 }
