@@ -429,8 +429,13 @@ class Validators {
     return null;
   }
 
-  /// Validate expense description
+  /// Validate expense description (optional)
   static String? validateExpenseDescription(String? value) {
+    // Allow empty descriptions
+    if (value == null || value.trim().isEmpty) {
+      return null;
+    }
+    
     return validateName(
       value,
       minLength: 1,

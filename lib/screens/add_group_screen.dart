@@ -5,6 +5,7 @@ import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/services/contacts_service.dart';
 import 'package:splitzy/utils/validators.dart';
+import 'package:splitzy/screens/group_detail_screen.dart';
 // Removed unused import: 'package:flutter_contacts/flutter_contacts.dart';
 
 class AddGroupScreen extends StatefulWidget {
@@ -65,8 +66,8 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
         title: const Text('Add Group'),
         actions: [
           TextButton(
-            onPressed: _isLoading ? null : _saveGroup,
-            child: _isLoading
+            onPressed: (_isLoading || !userLoaded) ? null : _saveGroup,
+            child: (_isLoading || !userLoaded)
                 ? const SizedBox(
               width: 16,
               height: 16,
@@ -138,25 +139,10 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
                           }
                         },
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.add, color: Colors.green),
-                            onPressed: _isLoading ? null : () {
-                              final name = _newMemberController.text.trim();
-                              if (name.isNotEmpty) {
-                                _addManualMember(name);
-                              }
-                            },
-                            tooltip: 'Add member',
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.contacts, color: Colors.blue),
-                            onPressed: _isLoading ? null : _showContactsDialog,
-                            tooltip: 'Add from contacts',
-                          ),
-                        ],
+                      trailing: IconButton(
+                        icon: const Icon(Icons.contacts, color: Colors.blue),
+                        onPressed: _isLoading ? null : _showContactsDialog,
+                        tooltip: 'Add from contacts',
                       ),
                     ),
                   ],
@@ -195,6 +181,9 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
   }
 
   Future<void> _saveGroup() async {
+    // Prevent multiple simultaneous calls
+    if (_isLoading) return;
+    
     if (!_formKey.currentState!.validate()) {
       debugPrint('Form validation failed');
       return;
@@ -204,17 +193,24 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
       debugPrint('No members in group');
       return;
     }
+    
     setState(() => _isLoading = true);
+    
     try {
       final name = _nameController.text.trim();
+      if (name.isEmpty) {
+        _showErrorSnackBar('Please enter a group name');
+        return;
+      }
+      
       final authService = Provider.of<AuthService>(context, listen: false);
       final user = authService.currentUser;
       if (user == null) {
         _showErrorSnackBar('User not loaded. Please wait and try again.');
         debugPrint('User not loaded');
-        setState(() => _isLoading = false);
         return;
       }
+      
       final userId = user.uid;
       final group = GroupModel.create(
         name: name,
@@ -222,29 +218,62 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
         memberNames: _memberNames,
         createdBy: userId,
       );
+      
       final dbService = Provider.of<DatabaseService>(context, listen: false);
       debugPrint('Attempting to create group: $name');
+      
       final success = await dbService.createGroup(group);
       debugPrint('createGroup returned: $success');
+      
       if (!mounted) {
         debugPrint('Widget not mounted after group creation');
         return;
       }
+      
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Group "$name" created successfully!')),
+        // Show success dialog with option to navigate to group
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: const Text('Group Created!'),
+              content: Text('Group "$name" has been created successfully.'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.of(context).pop(group); // Return to previous screen
+                  },
+                  child: const Text('Done'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close dialog
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (context) => GroupDetailScreen(group: group),
+                      ),
+                    );
+                  },
+                  child: const Text('View Group'),
+                ),
+              ],
+            );
+          },
         );
-        Navigator.pop(context, true);
       } else {
-        _showErrorSnackBar('Failed to create group');
-        debugPrint('createGroup returned false');
+        final errorMsg = dbService.errorMessage ?? 'Failed to create group';
+        _showErrorSnackBar(errorMsg);
+        debugPrint('createGroup returned false: $errorMsg');
       }
     } catch (e) {
       if (!mounted) return;
       _showErrorSnackBar('Failed to create group. Please try again.');
       debugPrint('Exception in _saveGroup: $e');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

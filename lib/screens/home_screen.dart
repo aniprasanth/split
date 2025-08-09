@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:splitzy/screens/groups_screen.dart';
 import 'package:splitzy/screens/settings_screen.dart';
 import 'package:splitzy/screens/settle_up_screen.dart';
@@ -7,6 +8,10 @@ import 'package:splitzy/screens/add_group_screen.dart';
 import 'package:splitzy/screens/add_expense_screen.dart';
 import 'package:splitzy/screens/non_group_expenses_screen.dart';
 import 'package:splitzy/screens/my_expenses_screen.dart';
+import 'package:splitzy/screens/group_detail_screen.dart';
+import 'package:splitzy/services/database_service.dart';
+import 'package:splitzy/services/auth_service.dart';
+import 'package:splitzy/models/group_model.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -99,6 +104,65 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // Recent Groups Section
+                  Consumer2<AuthService, DatabaseService>(
+                    builder: (context, authService, dbService, child) {
+                      final currentUser = authService.currentUser;
+                      if (currentUser == null) return const SizedBox.shrink();
+                      
+                      return StreamBuilder<List<GroupModel>>(
+                        stream: dbService.getUserGroups(currentUser.uid),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          
+                          final recentGroups = snapshot.data!.take(3).toList();
+                          
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Recent Groups',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              ...recentGroups.map((group) => Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Theme.of(context).primaryColor,
+                                    child: Text(
+                                      group.name.isNotEmpty ? group.name[0].toUpperCase() : 'G',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                  title: Text(group.name),
+                                  subtitle: Text('${group.members.length} members'),
+                                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => GroupDetailScreen(group: group),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              )),
+                              const SizedBox(height: 16),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
                   
                   // Non-Group Expenses Card
                   Card(
