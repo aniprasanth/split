@@ -38,11 +38,20 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     super.initState();
     _selectedGroup = widget.group;
     _loadUserGroups();
+    
     final authService = Provider.of<AuthService>(context, listen: false);
     final currentUser = authService.currentUser;
+    
     if (currentUser != null) {
       _selectedPayer = currentUser.uid;
+      // For non-group expenses, initialize with current user
+      if (_selectedGroup == null) {
+        _availableMembers = [currentUser.uid];
+        _memberNames = {currentUser.uid: currentUser.displayName};
+        _selectedMembers = [currentUser.uid];
+      }
     }
+    
     if (_selectedGroup != null) {
       _initializeGroupData();
     }
@@ -150,7 +159,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           if (group != null) {
                             _initializeGroupData();
                           } else {
-                            // For non-group expense, only user and one friend allowed
+                            // For non-group expense, reset to current user only
                             final authService = Provider.of<AuthService>(context, listen: false);
                             final currentUser = authService.currentUser;
                             if (currentUser != null) {
@@ -453,19 +462,15 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       return;
     }
 
-    if (_selectedGroup == null) {
-      _showErrorSnackBar('Please select a group');
+    // For non-group expenses, allow if no group is selected but members exist
+    if (_selectedGroup == null && _availableMembers.isEmpty) {
+      _showErrorSnackBar('Please select a group or add people to split with');
       return;
     }
 
     // Validate member selection
-    final selectionError = Validators.validateSelection(
-      _selectedMembers,
-      fieldName: 'person to split with',
-    );
-
-    if (selectionError != null) {
-      _showErrorSnackBar(selectionError);
+    if (_selectedMembers.isEmpty) {
+      _showErrorSnackBar('Please select at least one person to split the expense with');
       return;
     }
 
@@ -494,7 +499,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       // Debug logging (only in debug mode)
       if (kDebugMode) {
         debugPrint('=== Adding Expense ===');
-        debugPrint('Group: ${_selectedGroup!.name}');
+        debugPrint('Group: ${_selectedGroup?.name ?? 'Non-group expense'}');
         debugPrint('Description: $description');
         debugPrint('Amount: ₹$amount');
         debugPrint('Paid by: $_selectedPayer');
@@ -510,11 +515,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         throw Exception('User not authenticated');
       }
 
-      // Validate selected members
-      if (_selectedMembers.isEmpty) {
-        throw Exception('At least one member must be selected for splitting');
-      }
-
       // Calculate split amounts
       final splitAmount = amount / _selectedMembers.length;
       final splitMap = <String, double>{};
@@ -524,7 +524,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
       // Create expense model using the factory method
       final expense = ExpenseModel.create(
-        groupId: _selectedGroup!.id,
+        groupId: _selectedGroup?.id ?? '', // Empty string for non-group expenses
         payer: _selectedPayer,
         payerName: _memberNames[_selectedPayer] ?? _selectedPayer,
         amount: amount,
