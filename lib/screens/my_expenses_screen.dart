@@ -105,7 +105,7 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
           // Apply date filtering
           final filteredExpenses = _applyDateFilter(allMyExpenses);
 
-          // Calculate totals
+          // Calculate totals (only your paid + your owed share)
           final totalExpenses = _calculateTotalExpenses(filteredExpenses, currentUser.uid);
 
           return SingleChildScrollView(
@@ -450,28 +450,26 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
   }
 
   Map<String, double> _calculateTotalExpenses(List<ExpenseModel> expenses, String currentUserId) {
-    double totalPaid = 0.0;
-    double totalShare = 0.0;
-    double totalAmount = 0.0;
+    double totalPaid = 0.0; // money you spent (you were the payer)
+    double totalOwedShare = 0.0; // money you owe when others paid
 
     for (final expense in expenses) {
-      totalAmount += expense.amount;
-
       if (expense.payer == currentUserId) {
         totalPaid += expense.amount;
-      }
-
-      if (expense.split.containsKey(currentUserId)) {
-        totalShare += expense.split[currentUserId] ?? 0.0;
+      } else if (expense.split.containsKey(currentUserId)) {
+        totalOwedShare += expense.split[currentUserId] ?? 0.0;
       }
     }
 
-    final balance = totalPaid - totalShare;
+    // Total should include ONLY money you spent + money you owe to others
+    final total = totalPaid + totalOwedShare;
+
+    final balance = totalPaid - totalOwedShare; // positive => others owe you
 
     return {
-      'total': totalAmount,
+      'total': total,
       'paid': totalPaid,
-      'share': totalShare,
+      'share': totalOwedShare,
       'balance': balance,
     };
   }

@@ -65,7 +65,7 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
         title: const Text('Add Group'),
         actions: [
           TextButton(
-            onPressed: (_isLoading || !userLoaded) ? null : _saveGroup,
+                         onPressed: (_isLoading || !userLoaded) ? null : () { FocusScope.of(context).unfocus(); _saveGroup(); },
             child: (_isLoading || !userLoaded)
                 ? const SizedBox(
               width: 16,
@@ -395,6 +395,7 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
     if (!mounted) return;
 
     if (granted) {
+      // Show the picker immediately after permission is granted
       _showContactsDialog();
     } else {
       _showErrorSnackBar('Contacts permission is required to add members from contacts');

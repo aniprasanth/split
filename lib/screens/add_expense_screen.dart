@@ -108,7 +108,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         title: const Text('Add Expense'),
         actions: [
           TextButton(
-            onPressed: _isLoading ? null : _saveExpense,
+            onPressed: _isLoading ? null : () { FocusScope.of(context).unfocus(); _saveExpense(); },
             child: _isLoading
                 ? const SizedBox(
               width: 16,
@@ -136,48 +136,55 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
-                    DropdownButtonFormField<GroupModel?>(
-                      value: _selectedGroup,
-                      decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        hintText: 'Choose a group',
-                      ),
-                      items: [
-                        if (widget.group == null)
+                    if (widget.group != null && _selectedGroup != null)
+                      TextFormField(
+                        enabled: false,
+                        initialValue: _selectedGroup!.name,
+                        decoration: const InputDecoration(
+                          labelText: 'Group',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.group),
+                        ),
+                      )
+                    else
+                      DropdownButtonFormField<GroupModel?>(
+                        value: _selectedGroup,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          hintText: 'Choose a group',
+                        ),
+                        items: [
                           DropdownMenuItem<GroupModel?>(
                             value: null,
                             child: Text('None'),
                           ),
-                        ..._userGroups.map((group) {
-                          return DropdownMenuItem(
-                            value: group,
-                            child: Text(group.name),
-                          );
-                        })
-                      ],
-                      onChanged: widget.group != null || _isLoading ? null : (group) {
-                        setState(() {
-                          _selectedGroup = group;
-                          if (group != null) {
-                            _initializeGroupData();
-                          } else {
-                            // For non-group expense, reset to current user only
-                            final authService = Provider.of<AuthService>(context, listen: false);
-                            final currentUser = authService.currentUser;
-                            if (currentUser != null) {
-                              _availableMembers = [currentUser.uid];
-                              _memberNames = {currentUser.uid: currentUser.displayName};
-                              _selectedPayer = currentUser.uid;
-                              _selectedMembers = [currentUser.uid];
+                          ..._userGroups.map((group) {
+                            return DropdownMenuItem(
+                              value: group,
+                              child: Text(group.name),
+                            );
+                          })
+                        ],
+                        onChanged: _isLoading ? null : (group) {
+                          setState(() {
+                            _selectedGroup = group;
+                            if (group != null) {
+                              _initializeGroupData();
+                            } else {
+                              // For non-group expense, reset to current user only
+                              final authService = Provider.of<AuthService>(context, listen: false);
+                              final currentUser = authService.currentUser;
+                              if (currentUser != null) {
+                                _availableMembers = [currentUser.uid];
+                                _memberNames = {currentUser.uid: currentUser.displayName};
+                                _selectedPayer = currentUser.uid;
+                                _selectedMembers = [currentUser.uid];
+                              }
                             }
-                          }
-                        });
-                      },
-                      validator: (value) => null, // No validation needed for group
-                      disabledHint: widget.group != null && _selectedGroup != null
-                          ? Text(_selectedGroup!.name)
-                          : null,
-                    ),
+                          });
+                        },
+                        validator: (value) => null,
+                      ),
                   ],
                 ),
               ),
@@ -267,7 +274,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           Row(
                             children: [
                               TextButton.icon(
-                                onPressed: _isLoading || (_selectedGroup == null && _selectedMembers.length >= 2) ? null : _showAddPersonDialog,
+                                onPressed: _isLoading ? null : _showAddPersonDialog,
                                 icon: const Icon(Icons.person_add),
                                 label: const Text('Add Person'),
                               ),
@@ -295,9 +302,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       ..._availableMembers.map((member) => CheckboxListTile(
                         title: Text(_memberNames[member] ?? member),
                         value: _selectedMembers.contains(member),
-                        onChanged: _isLoading || (_selectedGroup == null && _selectedMembers.length >= 2 && !_selectedMembers.contains(member)) ? null : (checked) {
+                        onChanged: _isLoading ? null : (checked) {
                           setState(() {
-                            if (checked == true && (_selectedGroup != null || _selectedMembers.length < 2)) {
+                            if (checked == true) {
                               _selectedMembers.add(member);
                             } else {
                               _selectedMembers.remove(member);

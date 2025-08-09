@@ -16,7 +16,6 @@ class ContactsService extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   ContactsService() {
-    _checkPermission();
   }
 
   Future<void> _checkPermission() async {
@@ -115,3 +114,4 @@ class ContactsService extends ChangeNotifier {
     notifyListeners();
   }
 }
+

@@ -31,11 +31,27 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   late PageController _pageController;
+  bool _welcomeShown = false;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
+    // Show welcome message briefly after login
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      if (authService.currentUser != null && !_welcomeShown) {
+        _welcomeShown = true;
+        final name = authService.currentUser!.displayName;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Welcome back, $name!'),
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    });
   }
 
   @override
@@ -139,64 +155,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16),
-
-                  // Welcome & Overview Card
-                  Consumer<AuthService>(
-                    builder: (context, authService, child) {
-                      final currentUser = authService.currentUser;
-                      return Card(
-                        elevation: 2,
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  CircleAvatar(
-                                    radius: 24,
-                                    backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                                    backgroundImage: currentUser?.photoUrl != null
-                                        ? NetworkImage(currentUser!.photoUrl!)
-                                        : null,
-                                    child: currentUser?.photoUrl == null
-                                        ? Icon(
-                                      Icons.person,
-                                      color: Theme.of(context).primaryColor,
-                                      size: 28,
-                                    )
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Welcome back!',
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                        Text(
-                                          currentUser?.name ?? 'User',
-                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-
                   const SizedBox(height: 24),
                   Text(
                     'Quick Access',
@@ -379,21 +337,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                     trailing: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        IconButton(
-                                          icon: Icon(
-                                            Icons.add_circle_outline,
-                                            color: Theme.of(context).primaryColor,
-                                          ),
-                                          onPressed: () {
-                                            Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (context) => AddExpenseScreen(group: group),
-                                              ),
-                                            );
-                                          },
-                                          tooltip: 'Add expense',
-                                        ),
                                         const Icon(Icons.arrow_forward_ios, size: 16),
                                       ],
                                     ),

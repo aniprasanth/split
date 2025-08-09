@@ -11,13 +11,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
-  // Removed unused _formKey
-  // final _emailController = TextEditingController();
-  // final _passwordController = TextEditingController();
-  // final _nameController = TextEditingController();
-
-  // bool _isSignUp = false;
-  // bool _obscurePassword = true;
   bool _isLoading = false;
 
   late AnimationController _animationController;
@@ -51,9 +44,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   @override
   void dispose() {
     _animationController.dispose();
-    // _emailController.dispose();
-    // _passwordController.dispose();
-    // _nameController.dispose();
     super.dispose();
   }
 
@@ -80,20 +70,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                       const SizedBox(height: 60),
 
-                      // Auth Form
-                      // _buildAuthForm(authService), // Removed
-
-                      const SizedBox(height: 24),
-
                       // Google Sign In Button
                       _buildGoogleSignInButton(authService),
 
                       const SizedBox(height: 24),
-
-                      // Toggle Sign Up/Sign In // Removed
-                      // _buildToggleButton(), // Removed
-
-                      const SizedBox(height: 20),
 
                       // Error Message
                       if (authService.errorMessage != null) ...[
@@ -168,8 +148,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  // Remove _buildAuthForm, _buildTextField, _buildSubmitButton, _buildToggleButton, _handleSubmit, and related state variables
-
   Widget _buildGoogleSignInButton(AuthService authService) {
     return Container(
       width: double.infinity,
@@ -222,8 +200,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     );
   }
 
-  // Remove _buildToggleButton
-
   Widget _buildErrorMessage(String message) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -267,17 +243,14 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       // Clear any previous error messages
       authService.clearError();
       
-      final result = await authService.signInWithGoogle();
+      final result = await authService.signInWithGoogle().timeout(const Duration(seconds: 60), onTimeout: () => null);
       if (!mounted) return;
       
       if (result != null) {
-        // Wait for user data to load before navigating
-        await Future.delayed(const Duration(milliseconds: 500));
         if (!mounted) return;
-        
-        // Navigate to home screen immediately after successful sign-in
-        Navigator.of(context).pushReplacement(
+        Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const HomeScreen()),
+          (route) => false,
         );
       } else {
         // Check if there's a specific error message from auth service
@@ -311,4 +284,3 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     }
   }
 }
-

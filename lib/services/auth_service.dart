@@ -17,6 +17,7 @@ class AuthService extends ChangeNotifier {
   bool _isLoading = false;
   String? _errorMessage;
   bool _isGoogleSignInInitialized = false;
+  bool _isSigningIn = false;
 
   // Getters
   User? get currentFirebaseUser => _currentFirebaseUser ?? _auth.currentUser;
@@ -124,19 +125,25 @@ class AuthService extends ChangeNotifier {
 
   Future<UserCredential?> signInWithGoogle() async {
     try {
+      if (_isSigningIn) return null;
+      _isSigningIn = true;
       _setLoading(true);
       _setError(null);
 
       await _ensureGoogleSignInInitialized();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      final GoogleSignInAccount? googleUser = await _googleSignIn
+          .signIn()
+          .timeout(const Duration(seconds: 30), onTimeout: () => null);
 
       if (googleUser == null) {
         _setError('Sign-in was cancelled');
         return null;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth = await googleUser
+          .authentication
+          .timeout(const Duration(seconds: 30));
 
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
@@ -170,6 +177,7 @@ class AuthService extends ChangeNotifier {
       return null;
     } finally {
       _setLoading(false);
+      _isSigningIn = false;
     }
   }
 
@@ -236,7 +244,9 @@ class AuthService extends ChangeNotifier {
     try {
       await _ensureGoogleSignInInitialized();
 
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+      final GoogleSignInAccount? googleUser = await _googleSignIn
+          .signInSilently()
+          .timeout(const Duration(seconds: 10), onTimeout: () => null);
 
       if (googleUser != null) {
         final GoogleSignInAuthentication googleAuth = await googleUser.authentication;

@@ -53,13 +53,14 @@ class DatabaseService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
       
-      await _db.collection('groups').doc(group.id).update(group.toMap());
+      final updated = group.copyWith(updatedAt: DateTime.now());
+      await _db.collection('groups').doc(group.id).set(updated.toMap(), SetOptions(merge: true));
       
       _logger.i('Group updated successfully: ${group.name}');
       return true;
     } catch (e) {
       _logger.e('Error updating group: $e');
-      _setError('Failed to update group');
+      _setError('Failed to update group: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -131,18 +132,18 @@ class DatabaseService extends ChangeNotifier {
       currentMembers.remove(memberId);
       currentMemberNames.remove(memberId);
       
-      // Update the group document
-      await groupRef.update({
+      // Update the group document using merge to avoid overwriting unrelated fields
+      await groupRef.set({
         'members': currentMembers,
         'memberNames': currentMemberNames,
         'updatedAt': DateTime.now().toIso8601String(),
-      });
+      }, SetOptions(merge: true));
       
       _logger.i('Member removed successfully from group: $memberId');
       return true;
     } catch (e) {
       _logger.e('Error removing member from group: $e');
-      _setError('Failed to remove member from group');
+      _setError('Failed to remove member from group: $e');
       return false;
     } finally {
       _setLoading(false);
@@ -171,19 +172,19 @@ class DatabaseService extends ChangeNotifier {
         currentMembers.add(memberId);
         currentMemberNames[memberId] = memberName;
         
-        // Update the group document
-        await groupRef.update({
+        // Update the group document using merge to avoid overwriting unrelated fields
+        await groupRef.set({
           'members': currentMembers,
           'memberNames': currentMemberNames,
           'updatedAt': DateTime.now().toIso8601String(),
-        });
+        }, SetOptions(merge: true));
       }
       
       _logger.i('Member added successfully to group: $memberId');
       return true;
     } catch (e) {
       _logger.e('Error adding member to group: $e');
-      _setError('Failed to add member to group');
+      _setError('Failed to add member to group: $e');
       return false;
     } finally {
       _setLoading(false);

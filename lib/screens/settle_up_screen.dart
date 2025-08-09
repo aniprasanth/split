@@ -5,6 +5,7 @@ import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/group_model.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettleUpScreen extends StatefulWidget {
   const SettleUpScreen({super.key});
@@ -306,24 +307,27 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                     color: color.shade700,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      icon: Icon(Icons.message, color: Colors.blue.shade600, size: 20),
-                      onPressed: () => _sendReminder(name, amount, isOwesYou),
-                      tooltip: 'Send reminder',
-                      constraints: const BoxConstraints(),
-                      padding: EdgeInsets.zero,
-                    ),
+                    if (!isOwesYou)
+                      TextButton.icon(
+                        onPressed: () => _pay(userId, name, amount),
+                        icon: const Icon(Icons.payment, size: 18),
+                        label: const Text('Pay'),
+                      ),
+                    if (isOwesYou)
+                      TextButton.icon(
+                        onPressed: () => _sendReminder(name, amount, isOwesYou),
+                        icon: const Icon(Icons.message, size: 18),
+                        label: const Text('Remind'),
+                      ),
                     const SizedBox(width: 8),
-                    IconButton(
-                      icon: Icon(Icons.check_circle, color: Colors.green.shade600, size: 20),
+                    TextButton.icon(
                       onPressed: () => _markAsSettled(userId, name, amount),
-                      tooltip: 'Mark as settled',
-                      constraints: const BoxConstraints(),
-                      padding: EdgeInsets.zero,
+                      icon: const Icon(Icons.check_circle, size: 18),
+                      label: const Text('Mark as Settled'),
                     ),
                   ],
                 ),
@@ -376,5 +380,21 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
         ],
       ),
     );
+  }
+
+  Future<void> _pay(String userId, String name, double amount) async {
+    final upiAmount = amount.toStringAsFixed(2);
+    final uri = Uri.parse('upi://pay?pa=example@upi&pn=$name&am=$upiAmount&cu=INR');
+    try {
+      // UPI intents must open in external payment apps
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No payment app found'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 }
