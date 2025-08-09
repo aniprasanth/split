@@ -133,6 +133,16 @@ class _SplashScreenState extends State<SplashScreen> {
           _errorMessage = e.toString();
           _isLoading = false;
         });
+        
+        // After 3 seconds, navigate to login screen even if there's an error
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+            );
+          }
+        });
       }
     }
   }
@@ -284,4 +294,3 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
-
