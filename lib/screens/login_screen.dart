@@ -263,13 +263,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
     try {
       final result = await authService.signInWithGoogle();
-      if (result != null && mounted) {
+      if (!mounted) return;
+      
+      if (result != null) {
+        // Navigate to home screen immediately after successful sign-in
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const HomeScreen()),
         );
-      } else if (mounted) {
+      } else {
+        // Check if there's a specific error message from auth service
+        final errorMsg = authService.errorMessage ?? 'Google sign-in failed. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Google sign-in failed. Please try again.')),
+          SnackBar(content: Text(errorMsg)),
         );
       }
     } catch (e) {
