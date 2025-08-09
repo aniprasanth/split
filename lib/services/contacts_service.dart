@@ -15,22 +15,7 @@ class ContactsService extends ChangeNotifier {
   bool get hasPermission => _hasPermission;
   String? get errorMessage => _errorMessage;
 
-  ContactsService() {
-  }
-
-  Future<void> _checkPermission() async {
-    try {
-      _hasPermission = await FlutterContacts.requestPermission();
-      if (_hasPermission) {
-        await loadContacts();
-      }
-      notifyListeners();
-    } catch (e) {
-      _logger.e('Error checking contacts permission: $e');
-      _errorMessage = 'Failed to check contacts permission';
-      notifyListeners();
-    }
-  }
+  ContactsService();
 
   Future<bool> requestPermission() async {
     try {
@@ -51,6 +36,7 @@ class ContactsService extends ChangeNotifier {
   Future<void> loadContacts() async {
     if (!_hasPermission) {
       _errorMessage = 'No permission to access contacts';
+      notifyListeners();
       return;
     }
 
@@ -66,8 +52,8 @@ class ContactsService extends ChangeNotifier {
 
       // Filter out contacts without names and sort by display name
       _contacts = _contacts.where((contact) => contact.displayName.isNotEmpty).toList();
-      _contacts.sort((a, b) => 
-        a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase())
+      _contacts.sort((a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase())
       );
 
       _logger.i('Loaded ${_contacts.length} contacts');
@@ -82,16 +68,16 @@ class ContactsService extends ChangeNotifier {
 
   List<Contact> searchContacts(String query) {
     if (query.isEmpty) return _contacts;
-    
+
     final lowercaseQuery = query.toLowerCase();
     return _contacts.where((contact) {
       final name = contact.displayName.toLowerCase();
       final phones = contact.phones.map((p) => p.number.toLowerCase());
       final emails = contact.emails.map((e) => e.address.toLowerCase());
-      
+
       return name.contains(lowercaseQuery) ||
-             phones.any((phone) => phone.contains(lowercaseQuery)) ||
-             emails.any((email) => email.contains(lowercaseQuery));
+          phones.any((phone) => phone.contains(lowercaseQuery)) ||
+          emails.any((email) => email.contains(lowercaseQuery));
     }).toList();
   }
 
@@ -114,4 +100,3 @@ class ContactsService extends ChangeNotifier {
     notifyListeners();
   }
 }
-

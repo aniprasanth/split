@@ -78,7 +78,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
     return {
       'youOwe': youOwe,
       'owesYou': owesYou,
-      'memberNames': memberNames, // Fixed: removed unnecessary .toString()
+      'memberNames': memberNames,
     };
   }
 
@@ -386,15 +386,16 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
     final upiAmount = amount.toStringAsFixed(2);
     final uri = Uri.parse('upi://pay?pa=example@upi&pn=$name&am=$upiAmount&cu=INR');
     try {
-      // UPI intents must open in external payment apps
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No payment app found'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No payment app found'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 }
