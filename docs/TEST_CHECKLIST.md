@@ -100,6 +100,60 @@
 3. **Long Lists**: Should handle large numbers of expenses/groups
 4. **Rapid Taps**: Should prevent duplicate submissions
 
+## 📱 Testing Instructions
+
+### Prerequisites
+1. Ensure Firebase project is properly configured
+2. Google Sign-In is set up in Firebase Console
+3. Contact permissions are granted on the test device
+
+### Step-by-Step Testing
+
+#### 1. Authentication Testing
+```
+1. Launch the app
+2. Verify splash screen appears and navigates correctly
+3. Test Google Sign-In flow
+4. Verify automatic sign-in on app restart
+5. Test sign-out functionality
+```
+
+#### 2. Group Management Testing
+```
+1. Navigate to Groups tab
+2. Tap the + button and select "Add Group"
+3. Test group name validation
+4. Test adding members manually
+5. Test adding members from contacts
+6. Verify group creation success
+```
+
+#### 3. Expense Management Testing
+```
+1. Tap + button and select "Add Expense"
+2. Test group expense creation
+3. Test non-group expense creation
+4. Verify member selection works
+5. Test form validation
+6. Verify expense saving
+```
+
+#### 4. Navigation Testing
+```
+1. Test all bottom navigation tabs
+2. Verify + button appears/disappears correctly
+3. Test navigation to expense screens from home
+4. Verify back navigation works
+```
+
 ## ✅ All Critical Issues Resolved
 
 The app should now work smoothly without any stuck screens or broken functionality. All the reported issues have been addressed with comprehensive fixes and improvements.
+
+## 📝 Notes for Developers
+
+- All Provider.of calls use `listen: false` to prevent unnecessary rebuilds
+- Proper mounted checks are implemented in all async operations
+- Error handling is comprehensive throughout the app
+- The app follows Flutter best practices for state management
+- UI components are responsive and handle edge cases properly
