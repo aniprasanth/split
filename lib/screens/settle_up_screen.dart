@@ -71,6 +71,78 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
     };
   }
 
+  Future<Map<String, dynamic>> _calculateSettlementsWithHistoryAsync(
+    List<ExpenseModel> expenses,
+    List<SettlementModel> settlements,
+    String currentUserId,
+    Map<String, GroupModel> groups,
+  ) async {
+    // Prepare plain maps for isolate
+    final expenseMaps = expenses.map((e) => e.toMap()).toList();
+    final balances = await compute(balancesFromExpenseMaps, expenseMaps);
+
+    // Apply completed settlements to balances
+    final Map<String, double> adjustedBalances = Map.from(balances);
+
+    for (final settlement in settlements) {
+      if (settlement.status == SettlementStatus.completed &&
+          !settlement.isDeleted &&
+          settlement.involves(currentUserId)) {
+        // Apply settlement to balances
+        if (settlement.fromUser == currentUserId) {
+          // Current user paid, reduce their balance
+          adjustedBalances[settlement.fromUser] =
+              (adjustedBalances[settlement.fromUser] ?? 0) - settlement.amount;
+          adjustedBalances[settlement.toUser] =
+              (adjustedBalances[settlement.toUser] ?? 0) + settlement.amount;
+        } else if (settlement.toUser == currentUserId) {
+          // Current user received, increase their balance
+          adjustedBalances[settlement.fromUser] =
+              (adjustedBalances[settlement.fromUser] ?? 0) - settlement.amount;
+          adjustedBalances[settlement.toUser] =
+              (adjustedBalances[settlement.toUser] ?? 0) + settlement.amount;
+        }
+      }
+    }
+
+    // Gather member names (small map; fine on UI thread)
+    final Map<String, String> memberNames = {};
+    for (final g in groups.values) {
+      memberNames.addAll(g.memberNames);
+    }
+    for (final e in expenses) {
+      memberNames[e.payer] = e.payerName;
+    }
+
+    // Add names from settlements for deleted groups
+    for (final s in settlements) {
+      if (s.isDeleted) {
+        memberNames[s.fromUser] = s.fromUserName;
+        memberNames[s.toUser] = s.toUserName;
+      }
+    }
+
+    // Separate into to give (you owe) and to get (owes you) - only unsettled amounts
+    final Map<String, double> youOwe = {};
+    final Map<String, double> owesYou = {};
+    adjustedBalances.forEach((memberId, balance) {
+      if (memberId != currentUserId && balance.abs() > 0.01) {
+        // Use small threshold for rounding
+        if (balance > 0) {
+          owesYou[memberId] = balance;
+        } else {
+          youOwe[memberId] = -balance;
+        }
+      }
+    });
+
+    return {
+      'youOwe': youOwe,
+      'owesYou': owesYou,
+      'memberNames': memberNames,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,8 +153,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'You Owe'),
-            Tab(text: 'Owes You'),
+            Tab(text: 'To Give'),
+            Tab(text: 'To Get'),
           ],
         ),
       ),
@@ -135,18 +207,71 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                     groups[group.id] = group;
                   }
 
-                  // Run heavy calc off the UI thread
-                  final settlements = await _calculateSettlementsAsync(expenses, currentUser.uid, groups);
-                  final youOweMap = settlements['youOwe'] as Map<String, double>;
-                  final owesYouMap = settlements['owesYou'] as Map<String, double>;
-                  final memberNames = settlements['memberNames'] as Map<String, String>;
+                  // Get settlements for the current user
+                  return StreamBuilder<List<SettlementModel>>(
+                    stream: dbService.getAllSettlementsForUser(currentUser.uid),
+                    builder: (context, settlementsSnapshot) {
+                      if (settlementsSnapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
 
-                  return TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildSettlementTab(youOweMap, memberNames, false),
-                      _buildSettlementTab(owesYouMap, memberNames, true),
-                    ],
+                      if (settlementsSnapshot.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                              const SizedBox(height: 16),
+                              const Text('Error loading settlements'),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final settlements = settlementsSnapshot.data ?? [];
+
+                      // Use FutureBuilder for async calculations with settlements
+                      return FutureBuilder<Map<String, dynamic>>(
+                        future: _calculateSettlementsWithHistoryAsync(
+                          expenses,
+                          settlements,
+                          currentUser.uid,
+                          groups,
+                        ),
+                        builder: (context, calcSnapshot) {
+                          if (calcSnapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(child: CircularProgressIndicator());
+                          }
+
+                          if (calcSnapshot.hasError) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                      Icons.error_outline, size: 64, color: Colors.red.shade400),
+                                  const SizedBox(height: 16),
+                                  const Text('Error calculating settlements'),
+                                ],
+                              ),
+                            );
+                          }
+
+                          final calcResult = calcSnapshot.data!;
+                          final youOweMap = calcResult['youOwe'] as Map<String, double>;
+                          final owesYouMap = calcResult['owesYou'] as Map<String, double>;
+                          final memberNames = calcResult['memberNames'] as Map<String, String>;
+
+                          return TabBarView(
+                            controller: _tabController,
+                            children: [
+                              _buildSettlementTab(youOweMap, memberNames, false),
+                              _buildSettlementTab(owesYouMap, memberNames, true),
+                            ],
+                          );
+                        },
+                      );
+                    },
                   );
                 },
               );
@@ -157,7 +282,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildSettlementTab(Map<String, double> settlements, Map<String, String> memberNames, bool isOwesYou) {
+  Widget _buildSettlementTab(
+      Map<String, double> settlements, Map<String, String> memberNames, bool isOwesYou) {
     final totalAmount = settlements.values.fold(0.0, (sum, amount) => sum + amount);
     final color = isOwesYou ? Colors.green : Colors.red;
 
@@ -187,17 +313,17 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isOwesYou ? 'Total owed to you' : 'Total you owe',
+                        isOwesYou ? 'Total to get' : 'Total to give',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: color.shade700,
-                        ),
+                              color: color.shade700,
+                            ),
                       ),
                       Text(
                         '₹${totalAmount.toStringAsFixed(2)}',
                         style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: color.shade800,
-                        ),
+                              fontWeight: FontWeight.bold,
+                              color: color.shade800,
+                            ),
                       ),
                     ],
                   ),
@@ -219,25 +345,23 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
             Text(
               'All settled up!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.grey.shade600,
-              ),
+                    color: Colors.grey.shade600,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
-              isOwesYou
-                  ? 'Nobody owes you money'
-                  : 'You don\'t owe anyone money',
+              isOwesYou ? 'Nobody owes you money' : 'You don\'t owe anyone money',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey.shade500,
-              ),
+                    color: Colors.grey.shade500,
+                  ),
             ),
           ] else ...[
             ...settlements.entries.map((entry) => _buildSettlementCard(
-              entry.key,
-              memberNames[entry.key] ?? entry.key,
-              entry.value,
-              isOwesYou,
-            )),
+                  entry.key,
+                  memberNames[entry.key] ?? entry.key,
+                  entry.value,
+                  isOwesYou,
+                )),
           ],
         ],
       ),
@@ -275,14 +399,14 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                   Text(
                     name,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                   Text(
-                    isOwesYou ? 'owes you' : 'you owe',
+                    isOwesYou ? 'to get' : 'to give',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey.shade600,
-                    ),
+                          color: Colors.grey.shade600,
+                        ),
                   ),
                 ],
               ),
@@ -293,9 +417,9 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                 Text(
                   '₹${amount.toStringAsFixed(2)}',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: color.shade700,
-                  ),
+                        fontWeight: FontWeight.bold,
+                        color: color.shade700,
+                      ),
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -331,8 +455,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
 
   void _sendReminder(String name, double amount, bool isOwesYou) {
     final message = isOwesYou
-        ? 'Hi $name! Just a friendly reminder that you owe me ₹${amount.toStringAsFixed(2)}. Thanks!'
-        : 'Hi $name! I owe you ₹${amount.toStringAsFixed(2)}. Let me know when you\'d like me to settle up!';
+        ? 'Hi $name! Just a friendly reminder that you owe me ₹${amount.toStringAsFixed(2)} to settle up. Thanks!'
+        : 'Hi $name! I owe you ₹${amount.toStringAsFixed(2)} to settle up. Let me know when you\'d like me to pay!';
 
     Clipboard.setData(ClipboardData(text: message));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -369,9 +493,15 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                 final groupsSnapshot = await db.getUserGroups(currentUser.uid).first;
                 final candidate = groupsSnapshot.firstWhere(
                   (g) => g.members.contains(currentUser.uid) && g.members.contains(userId),
-                  orElse: () => groupsSnapshot.isNotEmpty ? groupsSnapshot.first : GroupModel(
-                    id: '', name: 'Personal', members: [], memberNames: {}, createdBy: currentUser.uid,
-                  ),
+                  orElse: () => groupsSnapshot.isNotEmpty
+                      ? groupsSnapshot.first
+                      : GroupModel(
+                          id: '',
+                          name: 'Personal',
+                          members: [],
+                          memberNames: {},
+                          createdBy: currentUser.uid,
+                        ),
                 );
                 if (candidate.id.isNotEmpty) {
                   selectedGroup = candidate;
@@ -401,12 +531,23 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(success
-                      ? 'Marked ₹${amount.toStringAsFixed(2)} with $name as settled'
+                      ? '₹${amount.toStringAsFixed(2)} marked as settled with $name'
                       : 'Failed to record settlement'),
                   backgroundColor: success ? Colors.green : Colors.red,
                   behavior: SnackBarBehavior.floating,
+                  action: success
+                      ? SnackBarAction(
+                          label: 'Undo',
+                          onPressed: () {
+                            // TODO: Implement undo functionality for settlements
+                          },
+                        )
+                      : null,
                 ),
               );
+
+              // The UI will automatically refresh due to the stream-based architecture
+              // The settlement will be filtered out in the next calculation
             },
             child: const Text('Mark Settled'),
           ),

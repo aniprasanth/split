@@ -23,6 +23,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late GroupModel currentGroup;
+  bool _isUpdatingGroup = false;
+  bool _isDeletingGroup = false;
+  bool _isManagingMembers = false;
 
   @override
   void initState() {
@@ -143,52 +146,134 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
           itemCount: expenses.length,
           itemBuilder: (context, index) {
             final expense = expenses[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: ListTile(
-                contentPadding: const EdgeInsets.all(16),
-                leading: CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.secondary,
-                  child: Icon(
-                    Icons.receipt,
-                    color: Theme.of(context).colorScheme.onSecondary,
-                  ),
+            return Dismissible(
+              key: Key(expense.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.only(right: 20),
+                color: Colors.red,
+                child: const Icon(
+                  Icons.delete,
+                  color: Colors.white,
+                  size: 30,
                 ),
-                title: Text(
-                  expense.description,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 4),
-                    Text('Paid by ${expense.payerName} • ${expense.date.toLocal().toString().split(' ').first}')
-                  ],
-                ),
-                trailing: Text(
-                  '₹${expense.amount.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                onTap: () async {
-                  final updated = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => EditExpenseScreen(
-                        expense: expense,
-                        group: currentGroup,
-                      ),
+              ),
+              confirmDismiss: (direction) => _showDeleteExpenseDialog(expense),
+              onDismissed: (direction) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('${expense.description} deleted'),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      onPressed: () {
+                        // TODO: Implement undo functionality
+                      },
                     ),
-                  );
-                  if (updated == true && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Expense updated')),
+                  ),
+                );
+              },
+              child: Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.secondary,
+                    child: Icon(
+                      Icons.receipt,
+                      color: Theme.of(context).colorScheme.onSecondary,
+                    ),
+                  ),
+                  title: Text(
+                    expense.description,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 4),
+                      Text('Paid by ${expense.payerName} • ${expense.date.toLocal().toString().split(' ').first}')
+                    ],
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '₹${expense.amount.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert),
+                        onSelected: (value) async {
+                          switch (value) {
+                            case 'edit':
+                              final updated = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => EditExpenseScreen(
+                                    expense: expense,
+                                    group: currentGroup,
+                                  ),
+                                ),
+                              );
+                              if (updated == true && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Expense updated')),
+                                );
+                              }
+                              break;
+                            case 'delete':
+                              await _showDeleteExpenseDialog(expense);
+                              break;
+                          }
+                        },
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit),
+                                SizedBox(width: 8),
+                                Text('Edit'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Delete', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  onTap: () async {
+                    final updated = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => EditExpenseScreen(
+                          expense: expense,
+                          group: currentGroup,
+                        ),
+                      ),
                     );
-                  }
-                },
+                    if (updated == true && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Expense updated')),
+                      );
+                    }
+                  },
+                ),
               ),
             );
           },
@@ -364,64 +449,73 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
 
     await showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Edit Group'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: 'Group Name',
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newName = nameController.text.trim();
-              if (newName.isEmpty) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(content: Text('Group name cannot be empty')),
-                );
-                return;
-              }
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Edit Group'),
+            content: TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Group Name',
+              ),
+              autofocus: true,
+            ),
+            actions: [
+              TextButton(
+                onPressed: _isUpdatingGroup ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: _isUpdatingGroup ? null : () async {
+                  final newName = nameController.text.trim();
+                  if (newName.isEmpty) {
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(content: Text('Group name cannot be empty')),
+                    );
+                    return;
+                  }
 
-              final dbService = Provider.of<DatabaseService>(context, listen: false);
-              final updatedGroup = currentGroup.copyWith(name: newName);
+                  setDialogState(() => _isUpdatingGroup = true);
+                  final dbService = Provider.of<DatabaseService>(context, listen: false);
+                  final updatedGroup = currentGroup.copyWith(name: newName);
 
-              // Store context references before the async gap
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(dialogContext);
+                  // Store context references before the async gap
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+                  final navigator = Navigator.of(dialogContext);
 
-              try {
-                final success = await dbService.updateGroup(updatedGroup);
-                if (!mounted) return;
+                  try {
+                    final success = await dbService.updateGroup(updatedGroup);
+                    if (!mounted) return;
 
-                if (success) {
-                  setState(() {
-                    currentGroup = updatedGroup;
-                  });
-                  navigator.pop();
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(content: Text('Group updated successfully!')),
-                  );
-                } else {
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(content: Text('Failed to update group')),
-                  );
-                }
-              } catch (e) {
-                if (!mounted) return;
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('Error updating group: $e')),
-                );
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
+                    if (success) {
+                      setState(() {
+                        currentGroup = updatedGroup;
+                      });
+                      navigator.pop();
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(content: Text('Group updated successfully!')),
+                      );
+                    } else {
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(content: Text('Failed to update group')),
+                      );
+                    }
+                  } catch (e) {
+                    if (!mounted) return;
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(content: Text('Error updating group: $e')),
+                    );
+                  } finally {
+                    if (mounted) setDialogState(() => _isUpdatingGroup = false);
+                  }
+                },
+                child: _isUpdatingGroup
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Update'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -447,7 +541,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                       trailing: (member != 'You' && member != currentGroup.createdBy)
                           ? IconButton(
                         icon: const Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: () async {
+                        onPressed: _isManagingMembers ? null : () async {
+                          setDialogState(() => _isManagingMembers = true);
                           final dbService = Provider.of<DatabaseService>(context, listen: false);
                           final success = await dbService.removeMemberFromGroup(currentGroup.id, member);
                           if (!mounted) return;
@@ -464,7 +559,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                               );
                             });
                             setState(() {}); // Update the main screen
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Failed to remove member')),
+                            );
                           }
+                          setDialogState(() => _isManagingMembers = false);
                         },
                       )
                           : null,
@@ -478,17 +578,17 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: const Icon(Icons.add),
-                        onPressed: () => _addNewMember(newMemberController, setDialogState),
+                        onPressed: _isManagingMembers ? null : () => _addNewMember(newMemberController, setDialogState),
                       ),
                     ),
-                    onSubmitted: (_) => _addNewMember(newMemberController, setDialogState),
+                    onSubmitted: _isManagingMembers ? null : (_) => _addNewMember(newMemberController, setDialogState),
                   ),
                 ],
               ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
+                onPressed: _isManagingMembers ? null : () => Navigator.pop(dialogContext),
                 child: const Text('Close'),
               ),
             ],
@@ -507,6 +607,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
     final newMemberId = newMemberName;
     if (currentGroup.members.contains(newMemberId)) return;
 
+    setDialogState(() => _isManagingMembers = true);
     final dbService = Provider.of<DatabaseService>(context, listen: false);
 
     // Store context reference before async gap
@@ -535,50 +636,86 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
         const SnackBar(content: Text('Failed to add member')),
       );
     }
+    setDialogState(() => _isManagingMembers = false);
   }
 
   Future<void> _showDeleteGroupDialog() async {
     await showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Group'),
-        content: Text('Are you sure you want to delete "${currentGroup.name}"? This action cannot be undone.'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          return AlertDialog(
+            title: const Text('Delete Group'),
+            content: Text('Are you sure you want to delete "${currentGroup.name}"? This action cannot be undone.'),
+            actions: [
+              TextButton(
+                onPressed: _isDeletingGroup ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: _isDeletingGroup ? null : () async {
+                  setDialogState(() => _isDeletingGroup = true);
+                  final dbService = Provider.of<DatabaseService>(context, listen: false);
+
+                  // Store context references before async operations
+                  final navigator = Navigator.of(context);
+                  final dialogNavigator = Navigator.of(dialogContext);
+                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                  try {
+                    final success = await dbService.deleteGroup(currentGroup.id);
+                    if (!mounted) return;
+
+                    dialogNavigator.pop(); // Close dialog
+                    if (success) {
+                      navigator.pop(); // Go back to previous screen
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(content: Text('Group deleted successfully!')),
+                      );
+                    } else {
+                      scaffoldMessenger.showSnackBar(
+                        const SnackBar(content: Text('Failed to delete group')),
+                      );
+                    }
+                  } catch (e) {
+                    if (!mounted) return;
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(content: Text('Error deleting group: $e')),
+                    );
+                  } finally {
+                    if (mounted) setDialogState(() => _isDeletingGroup = false);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: _isDeletingGroup
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Delete'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<bool> _showDeleteExpenseDialog(ExpenseModel expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Expense'),
+        content: Text(
+          'Are you sure you want to delete "${expense.description}"? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              final dbService = Provider.of<DatabaseService>(context, listen: false);
-
-              // Store context references before async operations
-              final navigator = Navigator.of(context);
-              final dialogNavigator = Navigator.of(dialogContext);
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-              try {
-                final success = await dbService.deleteGroup(currentGroup.id);
-                if (!mounted) return;
-
-                dialogNavigator.pop(); // Close dialog
-                if (success) {
-                  navigator.pop(); // Go back to previous screen
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(content: Text('Group deleted successfully!')),
-                  );
-                } else {
-                  scaffoldMessenger.showSnackBar(
-                    const SnackBar(content: Text('Failed to delete group')),
-                  );
-                }
-              } catch (e) {
-                if (!mounted) return;
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('Error deleting group: $e')),
-                );
-              }
-            },
+            onPressed: () => Navigator.of(context).pop(true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -588,5 +725,35 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
         ],
       ),
     );
+
+    if (confirmed != true) return false;
+
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+    final success = await dbService.deleteExpense(expense.id, currentGroup.id);
+    
+    if (!mounted) return false;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${expense.description} deleted'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              // TODO: Implement undo functionality
+            },
+          ),
+        ),
+      );
+      return true;
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(dbService.errorMessage ?? 'Failed to delete expense'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
   }
 }

@@ -4,6 +4,7 @@ import 'package:splitzy/models/group_model.dart';
 import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/settlement_model.dart';
 import 'package:logger/logger.dart';
+import 'package:rxdart/rxdart.dart';
 
 class DatabaseService extends ChangeNotifier {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -72,27 +73,65 @@ class DatabaseService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
       
-      // Delete all expenses in the group
+      // Get group info before deletion for history preservation
+      final groupDoc = await _db.collection('groups').doc(groupId).get();
+      final groupData = groupDoc.data();
+      final groupName = groupData?['name'] ?? 'Deleted Group';
+      
+      // Get all expenses in the group for history preservation
       final expenseQuery = await _db
           .collection('groups')
           .doc(groupId)
           .collection('expenses')
           .get();
           
-      final batch = _db.batch();
-      for (final doc in expenseQuery.docs) {
-        batch.delete(doc.reference);
-      }
-      
-      // Delete all settlements in the group
+      // Get all settlements in the group for history preservation
       final settlementQuery = await _db
           .collection('groups')
           .doc(groupId)
           .collection('settlements')
           .get();
-          
-      for (final doc in settlementQuery.docs) {
+      
+      final batch = _db.batch();
+      
+      // Move expenses to permanent history instead of deleting
+      for (final doc in expenseQuery.docs) {
+        final expenseData = doc.data();
+        // Mark as deleted but preserve for history
+        expenseData['deletedAt'] = DateTime.now().toIso8601String();
+        expenseData['deletedGroupId'] = groupId;
+        expenseData['deletedGroupName'] = groupName;
+        expenseData['isDeleted'] = true;
+        
+        // Add to permanent history collection
+        batch.set(
+          _db.collection('expense_history').doc(doc.id),
+          expenseData
+        );
+        
+        // Delete from active collections
         batch.delete(doc.reference);
+        batch.delete(_db.collection('expenses').doc(doc.id));
+      }
+      
+      // Move settlements to permanent history instead of deleting
+      for (final doc in settlementQuery.docs) {
+        final settlementData = doc.data();
+        // Mark as deleted but preserve for history
+        settlementData['deletedAt'] = DateTime.now().toIso8601String();
+        settlementData['deletedGroupId'] = groupId;
+        settlementData['deletedGroupName'] = groupName;
+        settlementData['isDeleted'] = true;
+        
+        // Add to permanent history collection
+        batch.set(
+          _db.collection('settlement_history').doc(doc.id),
+          settlementData
+        );
+        
+        // Delete from active collections
+        batch.delete(doc.reference);
+        batch.delete(_db.collection('settlements').doc(doc.id));
       }
       
       // Delete the group itself
@@ -100,7 +139,7 @@ class DatabaseService extends ChangeNotifier {
       
       await batch.commit();
       
-      _logger.i('Group deleted successfully: $groupId');
+      _logger.i('Group deleted successfully: $groupId (history preserved)');
       return true;
     } catch (e) {
       _logger.e('Error deleting group: $e');
@@ -370,20 +409,73 @@ class DatabaseService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
       
+      // Get expense data before deletion for history preservation
+      final expenseDoc = await _db.collection('expenses').doc(expenseId).get();
+      final expenseData = expenseDoc.data();
+      
+      // Get group info if available
+      String? groupName;
+      if (groupId != null && groupId.isNotEmpty) {
+        final groupDoc = await _db.collection('groups').doc(groupId).get();
+        groupName = groupDoc.data()?['name'] ?? 'Unknown Group';
+      }
+      
+      final batch = _db.batch();
+      
+      // Move expense to permanent history instead of deleting
+      if (expenseData != null) {
+        expenseData['deletedAt'] = DateTime.now().toIso8601String();
+        expenseData['deletedGroupId'] = groupId;
+        expenseData['deletedGroupName'] = groupName;
+        expenseData['isDeleted'] = true;
+        
+        // Add to permanent history collection
+        batch.set(
+          _db.collection('expense_history').doc(expenseId),
+          expenseData
+        );
+      }
+      
       // Delete from main expenses collection
-      await _db.collection('expenses').doc(expenseId).delete();
+      batch.delete(_db.collection('expenses').doc(expenseId));
       
       // If it's a group expense, also delete from group's subcollection
       if (groupId != null && groupId.isNotEmpty) {
-        await _db
+        batch.delete(_db
             .collection('groups')
             .doc(groupId)
             .collection('expenses')
-            .doc(expenseId)
-            .delete();
+            .doc(expenseId));
       }
-          
-      _logger.i('Expense deleted successfully: $expenseId');
+      
+      // Find and handle related settlements
+      // Get all settlements that reference this expense
+      final settlementQuery = await _db
+          .collection('settlements')
+          .where('relatedExpenseId', isEqualTo: expenseId)
+          .get();
+      
+      for (final doc in settlementQuery.docs) {
+        final settlementData = doc.data();
+        // Mark settlement as cancelled due to expense deletion
+        settlementData['status'] = 'cancelled';
+        settlementData['cancelledAt'] = DateTime.now().toIso8601String();
+        settlementData['cancelledReason'] = 'Expense deleted';
+        settlementData['relatedExpenseId'] = expenseId;
+        
+        // Update settlement in both collections
+        batch.update(_db.collection('settlements').doc(doc.id), settlementData);
+        if (groupId != null && groupId.isNotEmpty) {
+          batch.update(
+            _db.collection('groups').doc(groupId).collection('settlements').doc(doc.id),
+            settlementData
+          );
+        }
+      }
+      
+      await batch.commit();
+           
+      _logger.i('Expense deleted successfully: $expenseId (history preserved)');
       return true;
     } catch (e) {
       _logger.e('Error deleting expense: $e');
@@ -486,6 +578,222 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  // ========== TRANSACTION HISTORY OPERATIONS ==========
+  
+  /// Get all transaction history (expenses and settlements) for a user
+  Stream<List<Map<String, dynamic>>> getTransactionHistory(String userId) {
+    try {
+      // Combine active and historical transactions
+      return Rx.combineLatest3(
+        _getActiveExpenses(userId),
+        _getHistoricalExpenses(userId),
+        _getHistoricalSettlements(userId),
+        (List<ExpenseModel> activeExpenses, List<Map<String, dynamic>> historicalExpenses, List<Map<String, dynamic>> historicalSettlements) {
+          final List<Map<String, dynamic>> allTransactions = [];
+          
+          // Add active expenses
+          for (final expense in activeExpenses) {
+            allTransactions.add({
+              'id': expense.id,
+              'type': 'expense',
+              'description': expense.description,
+              'amount': expense.amount,
+              'date': expense.date,
+              'groupId': expense.groupId,
+              'payer': expense.payer,
+              'payerName': expense.payerName,
+              'isDeleted': false,
+              'isHistorical': false,
+            });
+          }
+          
+          // Add historical expenses
+          allTransactions.addAll(historicalExpenses.map((e) => {
+            ...e,
+            'type': 'expense',
+            'isHistorical': true,
+          }));
+          
+          // Add historical settlements
+          allTransactions.addAll(historicalSettlements.map((s) => {
+            ...s,
+            'type': 'settlement',
+            'isHistorical': true,
+          }));
+          
+          // Sort by date (newest first)
+          allTransactions.sort((a, b) {
+            final dateA = a['date'] is String ? DateTime.parse(a['date']) : a['date'];
+            final dateB = b['date'] is String ? DateTime.parse(b['date']) : b['date'];
+            return dateB.compareTo(dateA);
+          });
+          
+          return allTransactions;
+        },
+      );
+    } catch (e) {
+      _logger.e('Error getting transaction history: $e');
+      return Stream.value([]);
+    }
+  }
+  
+  /// Get historical expenses for a user
+  Stream<List<Map<String, dynamic>>> _getHistoricalExpenses(String userId) {
+    try {
+      return _db
+          .collection('expense_history')
+          .where('payer', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs
+                .map((doc) => {
+                  final data = doc.data();
+                  data['id'] = doc.id;
+                  return data;
+                })
+                .toList();
+          });
+    } catch (e) {
+      _logger.e('Error getting historical expenses: $e');
+      return Stream.value([]);
+    }
+  }
+  
+  /// Get historical settlements for a user
+  Stream<List<Map<String, dynamic>>> _getHistoricalSettlements(String userId) {
+    try {
+      return _db
+          .collection('settlement_history')
+          .where('fromUser', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs
+                .map((doc) => {
+                  final data = doc.data();
+                  data['id'] = doc.id;
+                  return data;
+                })
+                .toList();
+          });
+    } catch (e) {
+      _logger.e('Error getting historical settlements: $e');
+      return Stream.value([]);
+    }
+  }
+  
+  /// Get active expenses for a user (for combining with history)
+  Stream<List<ExpenseModel>> _getActiveExpenses(String userId) {
+    try {
+      return _db
+          .collection('expenses')
+          .where('payer', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs
+                .map((doc) {
+                  try {
+                    return ExpenseModel.fromMap({
+                      'id': doc.id,
+                      ...doc.data(),
+                    });
+                  } catch (e) {
+                    _logger.e('Error parsing expense ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .where((expense) => expense != null)
+                .cast<ExpenseModel>()
+                .toList();
+          });
+    } catch (e) {
+      _logger.e('Error getting active expenses: $e');
+      return Stream.value([]);
+    }
+  }
+  
+  /// Get all settlements (active and historical) for a user
+  Stream<List<SettlementModel>> getAllSettlementsForUser(String userId) {
+    try {
+      return Rx.combineLatest2(
+        _getActiveSettlements(userId),
+        _getHistoricalSettlementsForUser(userId),
+        (List<SettlementModel> active, List<SettlementModel> historical) {
+          final allSettlements = [...active, ...historical];
+          allSettlements.sort((a, b) => b.date.compareTo(a.date));
+          return allSettlements;
+        },
+      );
+    } catch (e) {
+      _logger.e('Error getting all settlements for user: $e');
+      return Stream.value([]);
+    }
+  }
+  
+  /// Get active settlements for a user
+  Stream<List<SettlementModel>> _getActiveSettlements(String userId) {
+    try {
+      return _db
+          .collection('settlements')
+          .where('fromUser', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs
+                .map((doc) {
+                  try {
+                    return SettlementModel.fromMap({
+                      'id': doc.id,
+                      ...doc.data(),
+                    });
+                  } catch (e) {
+                    _logger.e('Error parsing settlement ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .where((settlement) => settlement != null)
+                .cast<SettlementModel>()
+                .toList();
+          });
+    } catch (e) {
+      _logger.e('Error getting active settlements: $e');
+      return Stream.value([]);
+    }
+  }
+  
+  /// Get historical settlements for a user
+  Stream<List<SettlementModel>> _getHistoricalSettlementsForUser(String userId) {
+    try {
+      return _db
+          .collection('settlement_history')
+          .where('fromUser', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            return snapshot.docs
+                .map((doc) {
+                  try {
+                    return SettlementModel.fromMap({
+                      'id': doc.id,
+                      ...doc.data(),
+                    });
+                  } catch (e) {
+                    _logger.e('Error parsing historical settlement ${doc.id}: $e');
+                    return null;
+                  }
+                })
+                .where((settlement) => settlement != null)
+                .cast<SettlementModel>()
+                .toList();
+          });
+    } catch (e) {
+      _logger.e('Error getting historical settlements for user: $e');
+      return Stream.value([]);
+    }
+  }
+
   Future<bool> updateSettlement(SettlementModel settlement) async {
     try {
       _setLoading(true);
@@ -522,7 +830,7 @@ class DatabaseService extends ChangeNotifier {
                 .map((doc) {
                   try {
                     return SettlementModel.fromMap({
-                      'id': doc.id,
+infectar.artifactId: doc.id,
                       ...doc.data(),
                     });
                   } catch (e) {
@@ -598,4 +906,3 @@ class DatabaseService extends ChangeNotifier {
     return settlements;
   }
 }
-

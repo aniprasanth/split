@@ -174,4 +174,3 @@ class ExpenseModel {
     return payer == userId || split.containsKey(userId);
   }
 }
-

@@ -179,14 +179,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                   if (group != null) {
                                     _initializeGroupData();
                                   } else {
-                                    // For non-group expense, reset to current user only
+                                    // For non-group expense, initialize with current user
                                     final authService = Provider.of<AuthService>(context, listen: false);
                                     final currentUser = authService.currentUser;
                                     if (currentUser != null) {
-                                      _availableMembers = [currentUser.uid];
-                                      _memberNames = {currentUser.uid: currentUser.displayName};
-                                      _selectedPayer = currentUser.uid;
-                                      _selectedMembers = [currentUser.uid];
+                                      // Initialize with current user if no members exist
+                                      if (_availableMembers.isEmpty) {
+                                        _availableMembers = [currentUser.uid];
+                                        _memberNames = {currentUser.uid: currentUser.displayName ?? 'You'};
+                                        _selectedPayer = currentUser.uid;
+                                        _selectedMembers = [currentUser.uid];
+                                      }
+                                      // Keep existing members if they were already added
                                     }
                                   }
                                 });
@@ -236,111 +240,90 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Only show payer and split UI if a group is selected
-            if (_selectedGroup != null) ...[
-              // Paid by
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Paid by',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      ..._availableMembers.map((member) => RadioListTile<String>(
-                        title: Text(_memberNames[member] ?? member),
-                        value: member,
-                        groupValue: _selectedPayer,
-                        onChanged: _isLoading ? null : (value) {
-                          setState(() {
-                            _selectedPayer = value!;
-                          });
-                        },
-                      )),
-                    ],
-                  ),
+            // Show payer and split UI for both group and non-group expenses
+            // Paid by
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Paid by',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    ..._availableMembers.map((member) => RadioListTile<String>(
+                      title: Text(_memberNames[member] ?? member),
+                      value: member,
+                      groupValue: _selectedPayer,
+                      onChanged: _isLoading ? null : (value) {
+                        setState(() {
+                          _selectedPayer = value!;
+                        });
+                      },
+                    )),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
+            ),
+            const SizedBox(height: 16),
 
-              // Split between
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Split between',
-                            style: Theme.of(context).textTheme.titleMedium,
+            // Split between
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Split between',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        // Show Add Person button only for non-group expenses
+                        if (_selectedGroup == null)
+                          TextButton.icon(
+                            onPressed: _isLoading ? null : _showAddPersonDialog,
+                            icon: const Icon(Icons.person_add),
+                            label: const Text('Add Person'),
                           ),
-                          Row(
-                            children: [
-                              // Block adding members when group is None. Here, group != null, so allow.
-                              TextButton.icon(
-                                onPressed: _isLoading ? null : _showAddPersonDialog,
-                                icon: const Icon(Icons.person_add),
-                                label: const Text('Add Person'),
-                              ),
-                              TextButton(
-                                onPressed: _isLoading ? null : () {
-                                  setState(() {
-                                    if (_selectedMembers.length == _availableMembers.length) {
-                                      _selectedMembers.clear();
-                                    } else {
-                                      _selectedMembers = [..._availableMembers];
-                                    }
-                                  });
-                                },
-                                child: Text(
-                                  _selectedMembers.length == _availableMembers.length
-                                      ? 'None'
-                                      : 'All',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      ..._availableMembers.map((member) => CheckboxListTile(
-                        title: Text(_memberNames[member] ?? member),
-                        value: _selectedMembers.contains(member),
-                        onChanged: _isLoading ? null : (checked) {
-                          setState(() {
-                            if (checked == true) {
-                              _selectedMembers.add(member);
-                            } else {
-                              _selectedMembers.remove(member);
-                            }
-                          });
-                        },
-                      )),
-                      if (_selectedMembers.isNotEmpty) ...[
-                        const Divider(),
-                        Builder(builder: (_) {
-                          final amount = double.tryParse(_amountController.text) ?? 0.0;
-                          final splitMap = SplitUtils.computeEqualSplit(amount, _selectedMembers);
-                          final perPerson = _selectedMembers.isEmpty
-                              ? 0.0
-                              : (splitMap[_selectedMembers.first] ?? 0.0);
-                          return Text(
-                            'Split: ₹${perPerson.toStringAsFixed(2)} per person',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          );
-                        }),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    ..._availableMembers.map((member) => CheckboxListTile(
+                      title: Text(_memberNames[member] ?? member),
+                      value: _selectedMembers.contains(member),
+                      onChanged: _isLoading ? null : (checked) {
+                        setState(() {
+                          if (checked == true) {
+                            _selectedMembers.add(member);
+                          } else {
+                            _selectedMembers.remove(member);
+                          }
+                        });
+                      },
+                    )),
+                    if (_selectedMembers.isNotEmpty) ...[
+                      const Divider(),
+                      Builder(builder: (_) {
+                        final amount = double.tryParse(_amountController.text) ?? 0.0;
+                        final splitMap = SplitUtils.computeEqualSplit(amount, _selectedMembers);
+                        final perPerson = _selectedMembers.isEmpty
+                            ? 0.0
+                            : (splitMap[_selectedMembers.first] ?? 0.0);
+                        return Text(
+                          'Split: ₹${perPerson.toStringAsFixed(2)} per person',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        );
+                      }),
                     ],
-                  ),
+                  ],
                 ),
               ),
-            ],
+            ),
             const SizedBox(height: 32),
 
             // Save button
@@ -375,107 +358,108 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _showAddPersonDialog() {
-    // Prevent adding members when group is None
-    if (_selectedGroup == null) {
-      _showErrorSnackBar('Select a group to add members');
-      return;
-    }
     final contactsService = Provider.of<ContactsService>(context, listen: false);
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Person'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              decoration: const InputDecoration(
-                hintText: 'Enter name',
-                border: OutlineInputBorder(),
-              ),
-              onSubmitted: (name) {
-                if (name.trim().isNotEmpty) {
-                  _addPersonToExpense(name.trim());
-                  Navigator.of(context).pop();
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            if (contactsService.hasPermission) ...[
-              const Text('Or select from contacts:'),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 200,
-                child: Consumer<ContactsService>(
-                  builder: (context, contactsService, child) {
-                    if (contactsService.isLoading) {
-                      return const Center(child: CircularProgressIndicator());
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Add Person'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Enter name',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (name) {
+                    if (name.trim().isNotEmpty) {
+                      _addPersonToExpense(name.trim());
+                      Navigator.of(context).pop();
                     }
+                  },
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                if (contactsService.hasPermission) ...[
+                  const Text('Or select from contacts:'),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 200,
+                    child: Consumer<ContactsService>(
+                      builder: (context, contactsService, child) {
+                        if (contactsService.isLoading) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
 
-                    if (contactsService.contacts.isEmpty) {
-                      return const Center(child: Text('No contacts found'));
-                    }
+                        if (contactsService.contacts.isEmpty) {
+                          return const Center(child: Text('No contacts found'));
+                        }
 
-                    return ListView.builder(
-                      itemCount: contactsService.contacts.length,
-                      itemBuilder: (context, index) {
-                        final contact = contactsService.contacts[index];
-                        return ListTile(
-                          leading: const CircleAvatar(
-                            child: Icon(Icons.person),
-                          ),
-                          title: Text(contact.displayName),
-                          onTap: () {
-                            _addPersonToExpense(contact.displayName);
-                            Navigator.of(context).pop();
+                        return ListView.builder(
+                          itemCount: contactsService.contacts.length,
+                          itemBuilder: (context, index) {
+                            final contact = contactsService.contacts[index];
+                            return ListTile(
+                              leading: const CircleAvatar(
+                                child: Icon(Icons.person),
+                              ),
+                              title: Text(contact.displayName),
+                              onTap: () {
+                                _addPersonToExpense(contact.displayName);
+                                Navigator.of(context).pop();
+                              },
+                            );
                           },
                         );
                       },
-                    );
-                  },
-                ),
-              ),
-            ] else ...[
-              TextButton.icon(
-                onPressed: () async {
-                  // Store context reference before async operation
-                  final currentContext = context;
-                  final granted = await contactsService.requestPermission();
-
-                  // Check if widget is still mounted before using context
-                  if (granted && mounted) {
-                    if (currentContext.mounted) {
-                      Navigator.of(currentContext).pop();
-                    }
-                    _showAddPersonDialog();
-                  }
-                },
-                icon: const Icon(Icons.contacts),
-                label: const Text('Grant contacts permission'),
+                    ),
+                  ),
+                ] else ...[
+                  TextButton.icon(
+                    onPressed: () async {
+                      final granted = await contactsService.requestPermission();
+                      if (granted && mounted) {
+                        Navigator.of(context).pop();
+                        _showAddPersonDialog();
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Permission denied')),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.contacts),
+                    label: const Text('Grant contacts permission'),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cancel'),
               ),
             ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   void _addPersonToExpense(String name) {
-    if (_selectedGroup == null) return; // safety
     if (!_availableMembers.contains(name)) {
       setState(() {
         _availableMembers.add(name);
         _memberNames[name] = name;
-        _selectedMembers.add(name);
+        // Auto-select new member for splitting
+        if (!_selectedMembers.contains(name)) {
+          _selectedMembers.add(name);
+        }
       });
     }
   }
@@ -492,14 +476,20 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     }
 
     // For non-group expenses, allow if no group is selected but members exist
-    if (_selectedGroup == null && _availableMembers.isEmpty) {
-      _showErrorSnackBar('Please select a group or add people to split with');
+    if (_selectedGroup == null && _availableMembers.length <= 1) {
+      _showErrorSnackBar('Please select a group or add people to split the expense with');
       return;
     }
 
     // Validate member selection
     if (_selectedMembers.isEmpty) {
       _showErrorSnackBar('Please select at least one person to split the expense with');
+      return;
+    }
+    
+    // For non-group expenses, ensure at least 2 people are involved
+    if (_selectedGroup == null && _selectedMembers.length < 2) {
+      _showErrorSnackBar('Please add at least one more person to split the expense');
       return;
     }
 
@@ -604,4 +594,3 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     );
   }
 }
-

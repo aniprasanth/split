@@ -245,127 +245,134 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // Breakdown
+            // Paid and Owed
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                // You Paid
                 Expanded(
-                  child: _buildBreakdownItem(
-                    'You Paid',
-                    totals['paid'] ?? 0.0,
-                    Colors.green,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'You Paid',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '₹${totals['paid']?.toStringAsFixed(2) ?? '0.00'}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
+
+                // Your Share
                 Expanded(
-                  child: _buildBreakdownItem(
-                    'Your Share',
-                    totals['share'] ?? 0.0,
-                    Colors.orange,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Your Share',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '₹${totals['share']?.toStringAsFixed(2) ?? '0.00'}',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
 
-            if ((totals['balance'] ?? 0.0) != 0) ...[
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: (totals['balance']! > 0 ? Colors.green : Colors.red).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: (totals['balance']! > 0 ? Colors.green : Colors.red).withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      totals['balance']! > 0 ? Icons.trending_up : Icons.trending_down,
-                      color: totals['balance']! > 0 ? Colors.green : Colors.red,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      totals['balance']! > 0
-                          ? 'You are owed ₹${totals['balance']!.toStringAsFixed(2)}'
-                          : 'You owe ₹${(-totals['balance']!).toStringAsFixed(2)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: totals['balance']! > 0 ? Colors.green : Colors.red,
-                      ),
-                    ),
-                  ],
-                ),
+            // Balance
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: (totals['balance'] ?? 0) >= 0 ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ],
+              child: Column(
+                children: [
+                  Text(
+                    'Balance',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: (totals['balance'] ?? 0) >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    (totals['balance'] ?? 0) >= 0
+                        ? '+₹${totals['balance']?.toStringAsFixed(2) ?? '0.00'}'
+                        : '-₹${(totals['balance'] ?? 0).abs().toStringAsFixed(2)}',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: (totals['balance'] ?? 0) >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBreakdownItem(String label, double amount, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '₹${amount.toStringAsFixed(2)}',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildExpensesList(List<ExpenseModel> expenses) {
     if (expenses.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            children: [
-              Icon(
-                Icons.account_balance_wallet_outlined,
-                size: 64,
-                color: Colors.grey.shade400,
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.receipt_outlined,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No expenses found',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No expenses found for the selected period',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey.shade600,
               ),
-              const SizedBox(height: 16),
-              Text(
-                'No Expenses Found',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'No expenses found for the selected period',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey.shade600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       );
     }
@@ -383,67 +390,147 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        ...expenses.map((expense) => Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-              child: Icon(
-                Icons.receipt,
-                color: Theme.of(context).primaryColor,
+        ...expenses.map((expense) => Dismissible(
+          key: Key(expense.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            color: Colors.red,
+            child: const Icon(
+              Icons.delete,
+              color: Colors.white,
+              size: 30,
+            ),
+          ),
+          confirmDismiss: (direction) => _showDeleteExpenseDialog(expense),
+          onDismissed: (direction) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${expense.description} deleted'),
+                action: SnackBarAction(
+                  label: 'Undo',
+                  onPressed: () {
+                    // TODO: Implement undo functionality
+                  },
+                ),
               ),
-            ),
-            title: Text(
-              expense.description.isNotEmpty ? expense.description : 'No description',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Paid by: ${expense.payerName}'),
-                Text(
-                  '${expense.date.day}/${expense.date.month}/${expense.date.year}',
-                  style: TextStyle(color: Colors.grey.shade600),
+            );
+          },
+          child: Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                child: Icon(
+                  Icons.receipt,
+                  color: Theme.of(context).primaryColor,
                 ),
-              ],
-            ),
-            trailing: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '₹${expense.amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+              ),
+              title: Text(
+                expense.description.isNotEmpty ? expense.description : 'No description',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Paid by: ${expense.payerName}'),
+                  Text(
+                    '${expense.date.day}/${expense.date.month}/${expense.date.year}',
+                    style: TextStyle(color: Colors.grey.shade600),
                   ),
-                ),
-                Text(
-                  '${expense.split.length} people',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 12,
+                ],
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '₹${expense.amount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        '${expense.split.length} people',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            isThreeLine: true,
-            onTap: () async {
-              // Try to find a group for this expense if any is loaded on this screen context (optional)
-              final updated = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => EditExpenseScreen(
-                    expense: expense,
+                  const SizedBox(width: 8),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+                    onSelected: (value) async {
+                      switch (value) {
+                        case 'edit':
+                          final updated = await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => EditExpenseScreen(
+                                expense: expense,
+                              ),
+                            ),
+                          );
+                          if (updated == true && mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Expense updated')),
+                            );
+                          }
+                          break;
+                        case 'delete':
+                          await _showDeleteExpenseDialog(expense);
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              );
-              if (updated == true && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Expense updated')),
+                ],
+              ),
+              isThreeLine: true,
+              onTap: () async {
+                final updated = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => EditExpenseScreen(
+                      expense: expense,
+                    ),
+                  ),
                 );
-              }
-            },
+                if (updated == true && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Expense updated')),
+                  );
+                }
+              },
+            ),
           ),
         )),
       ],
@@ -590,5 +677,58 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
       ),
     );
   }
-}
 
+  Future<bool> _showDeleteExpenseDialog(ExpenseModel expense) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Expense'),
+        content: Text(
+          'Are you sure you want to delete "${expense.description}"? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return false;
+
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+    final success = await dbService.deleteExpense(expense.id, expense.groupId);
+    
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('${expense.description} deleted'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () {
+              // TODO: Implement undo functionality
+            },
+          ),
+        ),
+      );
+      return true;
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(dbService.errorMessage ?? 'Failed to delete expense'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+  }
+}

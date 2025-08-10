@@ -233,7 +233,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Future<void> _handleGoogleSignIn(AuthService authService) async {
-    if (_isLoading || authService.isLoading) return;
+    if (_isLoading || authService.isLoading || authService.isSigningIn) return;
     
     setState(() {
       _isLoading = true;
@@ -243,7 +243,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       // Clear any previous error messages
       authService.clearError();
       
-      final result = await authService.signInWithGoogle().timeout(const Duration(seconds: 60), onTimeout: () => null);
+      final result = await authService.signInWithGoogle();
       if (!mounted) return;
       
       if (result != null) {

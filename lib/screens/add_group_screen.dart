@@ -65,7 +65,7 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
         title: const Text('Add Group'),
         actions: [
           TextButton(
-                         onPressed: (_isLoading || !userLoaded) ? null : () { FocusScope.of(context).unfocus(); _saveGroup(); },
+            onPressed: (_isLoading || !userLoaded) ? null : () { FocusScope.of(context).unfocus(); _saveGroup(); },
             child: (_isLoading || !userLoaded)
                 ? const SizedBox(
               width: 16,
@@ -408,4 +408,3 @@ class _AddGroupScreenState extends State<AddGroupScreen> {
     );
   }
 }
-

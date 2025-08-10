@@ -271,7 +271,7 @@ class AuthService extends ChangeNotifier {
         );
 
         final userCredential = await _auth.signInWithCredential(credential);
-        _currentGoogleUser = googleUser;
+        _currentGoogleUser = GoogleSignInAccount;
 
         // Ensure user data is loaded
         if (userCredential.user != null) {
@@ -441,4 +441,3 @@ class AuthService extends ChangeNotifier {
     }
   }
 }
-

@@ -39,6 +39,7 @@ dependencies:
   google_fonts: ^6.2.1
   logger: ^2.0.2+1
   flutter_contacts: ^1.1.9
+  rxdart: ^0.27.7
 
 dev_dependencies:
   flutter_test:
@@ -64,3 +65,4 @@ flutter:
         - asset: assets/fonts/Inter-Regular.ttf
         - asset: assets/fonts/Inter-Bold.ttf
           weight: 700
+
