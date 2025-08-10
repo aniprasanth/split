@@ -1,66 +1,481 @@
 (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
-diff --git a/test/split_utils_test.dart b/test/split_utils_test.dart
---- a/test/split_utils_test.dart
-+++ b/test/split_utils_test.dart
-@@ -0,0 +1,59 @@
-+import 'package:flutter_test/flutter_test.dart';
-+import 'package:splitzy/utils/split_utils.dart';
+diff --git a/lib/screens/non_group_expenses_screen.dart b/lib/screens/non_group_expenses_screen.dart
+--- a/lib/screens/non_group_expenses_screen.dart
++++ b/lib/screens/non_group_expenses_screen.dart
+@@ -1,163 +1,311 @@
+-import 'package:flutter/material.dart';
+-import 'package:provider/provider.dart';
+-import 'package:splitzy/services/database_service.dart';
+-import 'package:splitzy/models/expense_model.dart';
+-
+-class NonGroupExpensesScreen extends StatelessWidget {
+-  const NonGroupExpensesScreen({super.key});
+-
+-  @override
+-  Widget build(BuildContext context) {
+-    final dbService = Provider.of<DatabaseService>(context, listen: false);
+-
+-    return Scaffold(
+-      appBar: AppBar(
+-        title: const Text('Non-Group Expenses'),
+-        centerTitle: true,
+-        elevation: 0,
+-      ),
+-      body: StreamBuilder<List<ExpenseModel>>(
+-        stream: dbService.getAllExpenses(),
+-        builder: (context, snapshot) {
+-          if (snapshot.connectionState == ConnectionState.waiting) {
+-            return const Center(child: CircularProgressIndicator());
+-          }
+-
+-          if (snapshot.hasError) {
+-            return Center(
+-              child: Column(
+-                mainAxisAlignment: MainAxisAlignment.center,
+-                children: [
+-                  Icon(
+-                    Icons.error_outline,
+-                    size: 64,
+-                    color: Colors.red.shade400,
+-                  ),
+-                  const SizedBox(height: 16),
+-                  Text(
+-                    'Error loading expenses',
+-                    style: Theme.of(context).textTheme.titleLarge,
+-                  ),
+-                  const SizedBox(height: 8),
+-                  Text(
+-                    snapshot.error.toString(),
+-                    style: Theme.of(context).textTheme.bodyMedium,
+-                    textAlign: TextAlign.center,
+-                  ),
+-                ],
+-              ),
+-            );
+-          }
+-
+-          if (!snapshot.hasData) {
+-            return const Center(child: CircularProgressIndicator());
+-          }
+-
+-          // Filter for non-group expenses (empty groupId and split between 2 people)
+-          final nonGroupExpenses = snapshot.data!
+-              .where((e) => e.groupId.isEmpty && e.split.length == 2)
+-              .toList();
+-
+-          if (nonGroupExpenses.isEmpty) {
+-            return Center(
+-              child: Column(
+-                mainAxisAlignment: MainAxisAlignment.center,
+-                children: [
+-                  Icon(
+-                    Icons.receipt_outlined,
+-                    size: 64,
+-                    color: Colors.grey.shade400,
+-                  ),
+-                  const SizedBox(height: 16),
+-                  Text(
+-                    'No Non-Group Expenses',
+-                    style: Theme.of(context).textTheme.titleLarge,
+-                  ),
+-                  const SizedBox(height: 8),
+-                  Text(
+-                    'Expenses shared between two people will appear here',
+-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+-                      color: Colors.grey.shade600,
+-                    ),
+-                    textAlign: TextAlign.center,
+-                  ),
+-                ],
+-              ),
+-            );
+-          }
+-
+-          // Sort by date (newest first)
+-          nonGroupExpenses.sort((a, b) => b.date.compareTo(a.date));
+-
+-          return ListView.builder(
+-            padding: const EdgeInsets.all(16),
+-            itemCount: nonGroupExpenses.length,
+-            itemBuilder: (context, index) {
+-              final expense = nonGroupExpenses[index];
+-              return Card(
+-                margin: const EdgeInsets.only(bottom: 12),
+-                child: ListTile(
+-                  contentPadding: const EdgeInsets.all(16),
+-                  leading: CircleAvatar(
+-                    backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+-                    child: Icon(
+-                      Icons.receipt,
+-                      color: Theme.of(context).primaryColor,
+-                    ),
+-                  ),
+-                  title: Text(
+-                    expense.description,
+-                    style: const TextStyle(
+-                      fontWeight: FontWeight.w600,
+-                    ),
+-                  ),
+-                  subtitle: Column(
+-                    crossAxisAlignment: CrossAxisAlignment.start,
+-                    children: [
+-                      const SizedBox(height: 4),
+-                      Text(
+-                        'Paid by ${expense.payerName}',
+-                        style: TextStyle(
+-                          color: Colors.grey.shade600,
+-                        ),
+-                      ),
+-                      const SizedBox(height: 2),
+-                      Text(
+-                        '${expense.date.day}/${expense.date.month}/${expense.date.year}',
+-                        style: TextStyle(
+-                          color: Colors.grey.shade500,
+-                          fontSize: 12,
+-                        ),
+-                      ),
+-                    ],
+-                  ),
+-                  trailing: Column(
+-                    mainAxisAlignment: MainAxisAlignment.center,
+-                    crossAxisAlignment: CrossAxisAlignment.end,
+-                    children: [
+-                      Text(
+-                        '₹${expense.amount.toStringAsFixed(2)}',
+-                        style: TextStyle(
+-                          fontWeight: FontWeight.bold,
+-                          fontSize: 16,
+-                          color: Theme.of(context).primaryColor,
+-                        ),
+-                      ),
+-                      Text(
+-                        '₹${(expense.amount / expense.split.length).toStringAsFixed(2)} each',
+-                        style: TextStyle(
+-                          color: Colors.grey.shade600,
+-                          fontSize: 12,
+-                        ),
+-                      ),
+-                    ],
+-                  ),
+-                ),
+-              );
+-            },
+-          );
+-        },
+-      ),
+-    );
+-  }
+-}
++import 'package:flutter/material.dart';
++import 'package:provider/provider.dart';
++import 'package:splitzy/services/database_service.dart';
++import 'package:splitzy/models/expense_model.dart';
++import 'package:splitzy/screens/edit_expense_screen.dart';
 +
-+void main() {
-+  group('SplitUtils.computeEqualSplit', () {
-+    test('splits equally with exact cents and sums to total', () {
-+      final result = SplitUtils.computeEqualSplit(100.00, ['a', 'b', 'c', 'd']);
-+      expect(result.length, 4);
-+      expect(result.values.fold(0.0, (s, v) => s + v), 100.00);
-+      for (final v in result.values) {
-+        expect(v, 25.00);
-+      }
-+    });
++class NonGroupExpensesScreen extends StatelessWidget {
++  const NonGroupExpensesScreen({super.key});
 +
-+    test('splits and distributes remainders fairly', () {
-+      final result = SplitUtils.computeEqualSplit(10.00, ['a', 'b', 'c']);
-+      // 1000 cents / 3 = 333 each, remainder 1 -> first gets extra cent
-+      expect(result['a'], 3.34);
-+      expect(result['b'], 3.33);
-+      expect(result['c'], 3.33);
-+      final sum = double.parse(result.values.fold(0.0, (s, v) => (s + v)).toStringAsFixed(2));
-+      expect(sum, 10.00);
-+    });
++  @override
++  Widget build(BuildContext context) {
++    final dbService = Provider.of<DatabaseService>(context, listen: false);
 +
-+    test('handles zero or empty member list', () {
-+      final result = SplitUtils.computeEqualSplit(50.00, []);
-+      expect(result, isEmpty);
-+    });
-+  });
++    return Scaffold(
++      appBar: AppBar(
++        title: const Text('Non-Group Expenses'),
++        centerTitle: true,
++        elevation: 0,
++      ),
++      body: StreamBuilder<List<ExpenseModel>>(
++        stream: dbService.getAllExpenses(),
++        builder: (context, snapshot) {
++          if (snapshot.connectionState == ConnectionState.waiting) {
++            return const Center(child: CircularProgressIndicator());
++          }
 +
-+  group('SplitUtils.adjustCustomSplits', () {
-+    test('adjusts to match total with rounding down then distributing', () {
-+      final result = SplitUtils.adjustCustomSplits(100.0, {
-+        'a': 33.3333,
-+        'b': 33.3333,
-+        'c': 33.3333,
-+      });
-+      final sum = double.parse(result.values.fold(0.0, (s, v) => (s + v)).toStringAsFixed(2));
-+      expect(sum, 100.00);
-+      // Check that rounding is within 1 cent around 33.33 each
-+      for (final v in result.values) {
-+        expect(v >= 33.33 && v <= 33.34, isTrue);
-+      }
-+    });
++          if (snapshot.hasError) {
++            return Center(
++              child: Column(
++                mainAxisAlignment: MainAxisAlignment.center,
++                children: [
++                  Icon(
++                    Icons.error_outline,
++                    size: 64,
++                    color: Colors.red.shade400,
++                  ),
++                  const SizedBox(height: 16),
++                  Text(
++                    'Error loading expenses',
++                    style: Theme.of(context).textTheme.titleLarge,
++                  ),
++                  const SizedBox(height: 8),
++                  Text(
++                    snapshot.error.toString(),
++                    style: Theme.of(context).textTheme.bodyMedium,
++                    textAlign: TextAlign.center,
++                  ),
++                ],
++              ),
++            );
++          }
 +
-+    test('does not produce negatives when reducing', () {
-+      final result = SplitUtils.adjustCustomSplits(1.00, {
-+        'a': 1.00,
-+        'b': 0.50,
-+        'c': 0.50,
-+      });
-+      final sum = double.parse(result.values.fold(0.0, (s, v) => (s + v)).toStringAsFixed(2));
-+      expect(sum, 1.00);
-+      for (final v in result.values) {
-+        expect(v >= 0.0, isTrue);
-+      }
-+    });
-+  });
++          if (!snapshot.hasData) {
++            return const Center(child: CircularProgressIndicator());
++          }
++
++          // Filter for non-group expenses (empty groupId and split between 2 people)
++          final nonGroupExpenses = snapshot.data!
++              .where((e) => e.groupId.isEmpty && e.split.length == 2)
++              .toList();
++
++          if (nonGroupExpenses.isEmpty) {
++            return Center(
++              child: Column(
++                mainAxisAlignment: MainAxisAlignment.center,
++                children: [
++                  Icon(
++                    Icons.receipt_outlined,
++                    size: 64,
++                    color: Colors.grey.shade400,
++                  ),
++                  const SizedBox(height: 16),
++                  Text(
++                    'No Non-Group Expenses',
++                    style: Theme.of(context).textTheme.titleLarge,
++                  ),
++                  const SizedBox(height: 8),
++                  Text(
++                    'Expenses shared between two people will appear here',
++                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
++                      color: Colors.grey.shade600,
++                    ),
++                    textAlign: TextAlign.center,
++                  ),
++                ],
++              ),
++            );
++          }
++
++          // Sort by date (newest first)
++          nonGroupExpenses.sort((a, b) => b.date.compareTo(a.date));
++
++          return ListView.builder(
++            padding: const EdgeInsets.all(16),
++            itemCount: nonGroupExpenses.length,
++            itemBuilder: (context, index) {
++              final expense = nonGroupExpenses[index];
++              return Dismissible(
++                key: Key(expense.id),
++                direction: DismissDirection.endToStart,
++                background: Container(
++                  alignment: Alignment.centerRight,
++                  padding: const EdgeInsets.only(right: 20),
++                  color: Colors.red,
++                  child: const Icon(
++                    Icons.delete,
++                    color: Colors.white,
++                    size: 30,
++                  ),
++                ),
++                confirmDismiss: (direction) => _showDeleteExpenseDialog(context, expense),
++                onDismissed: (direction) {
++                  ScaffoldMessenger.of(context).showSnackBar(
++                    SnackBar(
++                      content: Text('${expense.description} deleted'),
++                      action: SnackBarAction(
++                        label: 'Undo',
++                        onPressed: () {
++                          // TODO: Implement undo functionality
++                        },
++                      ),
++                    ),
++                  );
++                },
++                child: Card(
++                  margin: const EdgeInsets.only(bottom: 12),
++                  child: ListTile(
++                    contentPadding: const EdgeInsets.all(16),
++                    leading: CircleAvatar(
++                      backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
++                      child: Icon(
++                        Icons.receipt,
++                        color: Theme.of(context).primaryColor,
++                      ),
++                    ),
++                    title: Text(
++                      expense.description,
++                      style: const TextStyle(
++                        fontWeight: FontWeight.w600,
++                      ),
++                    ),
++                    subtitle: Column(
++                      crossAxisAlignment: CrossAxisAlignment.start,
++                      children: [
++                        const SizedBox(height: 4),
++                        Text(
++                          'Paid by ${expense.payerName}',
++                          style: TextStyle(
++                            color: Colors.grey.shade600,
++                          ),
++                        ),
++                        const SizedBox(height: 2),
++                        Text(
++                          '${expense.date.day}/${expense.date.month}/${expense.date.year}',
++                          style: TextStyle(
++                            color: Colors.grey.shade500,
++                            fontSize: 12,
++                          ),
++                        ),
++                      ],
++                    ),
++                    trailing: Row(
++                      mainAxisSize: MainAxisSize.min,
++                      children: [
++                        Column(
++                          mainAxisAlignment: MainAxisAlignment.center,
++                          crossAxisAlignment: CrossAxisAlignment.end,
++                          children: [
++                            Text(
++                              '₹${expense.amount.toStringAsFixed(2)}',
++                              style: TextStyle(
++                                fontWeight: FontWeight.bold,
++                                fontSize: 16,
++                                color: Theme.of(context).primaryColor,
++                              ),
++                            ),
++                            Text(
++                              '₹${(expense.amount / expense.split.length).toStringAsFixed(2)} each',
++                              style: TextStyle(
++                                color: Colors.grey.shade600,
++                                fontSize: 12,
++                              ),
++                            ),
++                          ],
++                        ),
++                        const SizedBox(width: 8),
++                        PopupMenuButton<String>(
++                          icon: const Icon(Icons.more_vert),
++                          onSelected: (value) async {
++                            switch (value) {
++                              case 'edit':
++                                final updated = await Navigator.push(
++                                  context,
++                                  MaterialPageRoute(
++                                    builder: (_) => EditExpenseScreen(expense: expense),
++                                  ),
++                                );
++                                if (updated == true) {
++                                  ScaffoldMessenger.of(context).showSnackBar(
++                                    const SnackBar(content: Text('Expense updated')),
++                                  );
++                                }
++                                break;
++                              case 'delete':
++                                await _showDeleteExpenseDialog(context, expense);
++                                break;
++                            }
++                          },
++                          itemBuilder: (context) => [
++                            const PopupMenuItem(
++                              value: 'edit',
++                              child: Row(
++                                children: [
++                                  Icon(Icons.edit),
++                                  SizedBox(width: 8),
++                                  Text('Edit'),
++                                ],
++                              ),
++                            ),
++                            const PopupMenuItem(
++                              value: 'delete',
++                              child: Row(
++                                children: [
++                                  Icon(Icons.delete, color: Colors.red),
++                                  SizedBox(width: 8),
++                                  Text('Delete', style: TextStyle(color: Colors.red)),
++                                ],
++                              ),
++                            ),
++                          ],
++                        ),
++                      ],
++                    ),
++                    onTap: () async {
++                      final updated = await Navigator.push(
++                        context,
++                        MaterialPageRoute(
++                          builder: (_) => EditExpenseScreen(expense: expense),
++                        ),
++                      );
++                      if (updated == true) {
++                        ScaffoldMessenger.of(context).showSnackBar(
++                          const SnackBar(content: Text('Expense updated')),
++                        );
++                      }
++                    },
++                  ),
++                ),
++              );
++            },
++          );
++        },
++      ),
++    );
++  }
++
++  Future<bool> _showDeleteExpenseDialog(BuildContext context, ExpenseModel expense) async {
++    final confirmed = await showDialog<bool>(
++      context: context,
++      builder: (context) => AlertDialog(
++        title: const Text('Delete Expense'),
++        content: Text(
++          'Are you sure you want to delete "${expense.description}"? This action cannot be undone.',
++        ),
++        actions: [
++          TextButton(
++            onPressed: () => Navigator.of(context).pop(false),
++            child: const Text('Cancel'),
++          ),
++          ElevatedButton(
++            onPressed: () => Navigator.of(context).pop(true),
++            style: ElevatedButton.styleFrom(
++              backgroundColor: Colors.red,
++              foregroundColor: Colors.white,
++            ),
++            child: const Text('Delete'),
++          ),
++        ],
++      ),
++    );
++
++    if (confirmed != true) return false;
++
++    final dbService = Provider.of<DatabaseService>(context, listen: false);
++    final success = await dbService.deleteExpense(expense.id);
++    
++    if (success) {
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(
++          content: Text('${expense.description} deleted'),
++          action: SnackBarAction(
++            label: 'Undo',
++            onPressed: () {
++              // TODO: Implement undo functionality
++            },
++          ),
++        ),
++      );
++      return true;
++    } else {
++      ScaffoldMessenger.of(context).showSnackBar(
++        SnackBar(
++          content: Text(dbService.errorMessage ?? 'Failed to delete expense'),
++          backgroundColor: Colors.red,
++        ),
++      );
++      return false;
++    }
++  }
 +}
++
 EOF
 )

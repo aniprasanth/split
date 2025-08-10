@@ -13,6 +13,10 @@ class ExpenseModel {
   final String? imageUrl;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
+  final String? deletedGroupId;
+  final String? deletedGroupName;
+  final bool isDeleted;
 
   ExpenseModel({
     required this.id,
@@ -27,6 +31,10 @@ class ExpenseModel {
     this.imageUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
+    this.deletedAt,
+    this.deletedGroupId,
+    this.deletedGroupName,
+    this.isDeleted = false,
   }) : 
     createdAt = createdAt ?? DateTime.now(),
     updatedAt = updatedAt ?? DateTime.now();
@@ -60,6 +68,14 @@ class ExpenseModel {
             : data['updatedAt'] is DateTime
                 ? data['updatedAt']
                 : data['updatedAt']?.toDate() ?? DateTime.now(),
+        deletedAt: data['deletedAt'] is String 
+            ? DateTime.parse(data['deletedAt']) 
+            : data['deletedAt'] is DateTime
+                ? data['deletedAt']
+                : data['deletedAt']?.toDate(),
+        deletedGroupId: data['deletedGroupId'],
+        deletedGroupName: data['deletedGroupName'],
+        isDeleted: data['isDeleted'] ?? false,
       );
     } catch (e) {
       throw Exception('Error parsing ExpenseModel: $e');
@@ -80,6 +96,10 @@ class ExpenseModel {
       'imageUrl': imageUrl,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'deletedAt': deletedAt?.toIso8601String(),
+      'deletedGroupId': deletedGroupId,
+      'deletedGroupName': deletedGroupName,
+      'isDeleted': isDeleted,
     };
   }
 
@@ -96,6 +116,10 @@ class ExpenseModel {
     String? imageUrl,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? deletedAt,
+    String? deletedGroupId,
+    String? deletedGroupName,
+    bool? isDeleted,
   }) {
     return ExpenseModel(
       id: id ?? this.id,
@@ -110,6 +134,10 @@ class ExpenseModel {
       imageUrl: imageUrl ?? this.imageUrl,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
+      deletedAt: deletedAt ?? this.deletedAt,
+      deletedGroupId: deletedGroupId ?? this.deletedGroupId,
+      deletedGroupName: deletedGroupName ?? this.deletedGroupName,
+      isDeleted: isDeleted ?? this.isDeleted,
     );
   }
 
@@ -146,3 +174,4 @@ class ExpenseModel {
     return payer == userId || split.containsKey(userId);
   }
 }
+

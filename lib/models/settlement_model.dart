@@ -22,6 +22,13 @@ class SettlementModel {
   final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final DateTime? deletedAt;
+  final String? deletedGroupId;
+  final String? deletedGroupName;
+  final bool isDeleted;
+  final DateTime? cancelledAt;
+  final String? cancelledReason;
+  final String? relatedExpenseId;
 
   SettlementModel({
     required this.id,
@@ -39,6 +46,13 @@ class SettlementModel {
     this.notes,
     DateTime? createdAt,
     DateTime? updatedAt,
+    this.deletedAt,
+    this.deletedGroupId,
+    this.deletedGroupName,
+    this.isDeleted = false,
+    this.cancelledAt,
+    this.cancelledReason,
+    this.relatedExpenseId,
   }) : 
     createdAt = createdAt ?? DateTime.now(),
     updatedAt = updatedAt ?? DateTime.now();
@@ -73,6 +87,21 @@ class SettlementModel {
             : data['updatedAt'] is DateTime
                 ? data['updatedAt']
                 : data['updatedAt']?.toDate() ?? DateTime.now(),
+        deletedAt: data['deletedAt'] is String 
+            ? DateTime.parse(data['deletedAt']) 
+            : data['deletedAt'] is DateTime
+                ? data['deletedAt']
+                : data['deletedAt']?.toDate(),
+        deletedGroupId: data['deletedGroupId'],
+        deletedGroupName: data['deletedGroupName'],
+        isDeleted: data['isDeleted'] ?? false,
+        cancelledAt: data['cancelledAt'] is String 
+            ? DateTime.parse(data['cancelledAt']) 
+            : data['cancelledAt'] is DateTime
+                ? data['cancelledAt']
+                : data['cancelledAt']?.toDate(),
+        cancelledReason: data['cancelledReason'],
+        relatedExpenseId: data['relatedExpenseId'],
       );
     } catch (e) {
       throw Exception('Error parsing SettlementModel: $e');
@@ -96,6 +125,13 @@ class SettlementModel {
       'notes': notes,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
+      'deletedAt': deletedAt?.toIso8601String(),
+      'deletedGroupId': deletedGroupId,
+      'deletedGroupName': deletedGroupName,
+      'isDeleted': isDeleted,
+      'cancelledAt': cancelledAt?.toIso8601String(),
+      'cancelledReason': cancelledReason,
+      'relatedExpenseId': relatedExpenseId,
     };
   }
 
@@ -131,6 +167,13 @@ class SettlementModel {
     String? notes,
     DateTime? createdAt,
     DateTime? updatedAt,
+    DateTime? deletedAt,
+    String? deletedGroupId,
+    String? deletedGroupName,
+    bool? isDeleted,
+    DateTime? cancelledAt,
+    String? cancelledReason,
+    String? relatedExpenseId,
   }) {
     return SettlementModel(
       id: id ?? this.id,
@@ -148,6 +191,13 @@ class SettlementModel {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
+      deletedAt: deletedAt ?? this.deletedAt,
+      deletedGroupId: deletedGroupId ?? this.deletedGroupId,
+      deletedGroupName: deletedGroupName ?? this.deletedGroupName,
+      isDeleted: isDeleted ?? this.isDeleted,
+      cancelledAt: cancelledAt ?? this.cancelledAt,
+      cancelledReason: cancelledReason ?? this.cancelledReason,
+      relatedExpenseId: relatedExpenseId ?? this.relatedExpenseId,
     );
   }
 
@@ -187,3 +237,4 @@ class SettlementModel {
     return fromUser == userId || toUser == userId;
   }
 }
+
