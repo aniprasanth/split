@@ -4,9 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:splitzy/utils/theme_provider.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/services/local_storage_service.dart';
+import 'package:splitzy/services/cache_service.dart';
 import 'package:splitzy/screens/login_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:async';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,6 +19,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
+  bool _isDeletingAccount = false;
 
   @override
   void initState() {
@@ -99,10 +102,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               _buildAccountOption(
                 context,
-                'Delete Account',
-                Icons.delete_forever_outlined,
-                onTap: () => _showDeleteAccountDialog(context),
+                _isDeletingAccount ? 'Deleting Account...' : 'Delete Account',
+                _isDeletingAccount ? Icons.hourglass_empty : Icons.delete_forever_outlined,
+                onTap: _isDeletingAccount ? null : () => _showDeleteAccountDialog(context),
                 isDestructive: true,
+                isLoading: _isDeletingAccount,
               ),
             ],
           ),
@@ -267,7 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onChanged: (value) async {
           // Capture context-dependent objects before async operations
           final scaffoldMessenger = ScaffoldMessenger.of(context);
-          
+
           setState(() {
             _notificationsEnabled = value;
           });
@@ -313,9 +317,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       IconData icon, {
         VoidCallback? onTap,
         bool isDestructive = false,
+        bool isLoading = false,
       }) {
     return ListTile(
-      leading: Icon(
+      leading: isLoading
+          ? SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          valueColor: AlwaysStoppedAnimation<Color>(
+            isDestructive ? Colors.red : Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      )
+          : Icon(
         icon,
         color: isDestructive ? Colors.red : Theme.of(context).colorScheme.primary,
       ),
@@ -325,8 +341,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           color: isDestructive ? Colors.red : null,
         ),
       ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-      onTap: onTap,
+      trailing: isLoading
+          ? null
+          : const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: isLoading ? null : onTap,
     );
   }
 
@@ -512,6 +530,7 @@ Note: This is a demo export. In the full version, actual data would be exported 
   void _showDeleteAccountDialog(BuildContext context) {
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Delete Account'),
         content: const Text(
@@ -571,7 +590,7 @@ Note: This is a demo export. In the full version, actual data would be exported 
   Future<void> _launchURL(String url) async {
     // Capture context-dependent objects before async operations
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
+
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri)) {
       // Handle error
@@ -689,7 +708,7 @@ Note: This is a demo export. In the full version, actual data would be exported 
   Future<void> _signOut() async {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      
+
       // Show loading
       showDialog(
         context: context,
@@ -710,19 +729,19 @@ Note: This is a demo export. In the full version, actual data would be exported 
       if (mounted) {
         // Close loading dialog
         Navigator.pop(context);
-        
+
         // Navigate to login screen
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false,
+              (route) => false,
         );
       }
     } catch (e) {
       if (mounted) {
         // Close loading dialog
         Navigator.pop(context);
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to sign out: $e'),
@@ -734,68 +753,47 @@ Note: This is a demo export. In the full version, actual data would be exported 
   }
 
   Future<void> _deleteAccount() async {
+    if (_isDeletingAccount) return; // Prevent multiple calls
+
+    setState(() {
+      _isDeletingAccount = true;
+    });
+
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     final authService = Provider.of<AuthService>(context, listen: false);
 
     try {
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const AlertDialog(
-          content: Row(
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(width: 16),
-              Text('Deleting account...'),
-            ],
-          ),
-        ),
-      );
-
-      // Delete account
-      await authService.deleteAccount();
-
-      if (!mounted) return;
-      navigator.pop(); // Close loading dialog
-
-      // Clear local storage
+      // Step 1: Clear local storage and cache first
       await LocalStorageService.clearAll();
 
-      // Sign out and redirect to login
-      await authService.signOut();
-      if (!mounted) return;
-      navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+      // Clear cache service
+      final cacheService = Provider.of<CacheService>(context, listen: false);
+      cacheService.invalidateAllCaches();
 
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('Account deleted successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      // Step 2: Delete account with timeout
+      await _deleteAccountWithTimeout(authService);
+
+      // Step 3: Sign out
+      await authService.signOut();
+
+      // Step 4: Navigate to login screen
+      if (mounted) {
+        navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Account deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
-        navigator.pop(); // Close loading dialog if open
-        if (e.code == 'requires-recent-login') {
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(
-              content: Text('Please re-authenticate and try again.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        } else {
-          scaffoldMessenger.showSnackBar(
-            SnackBar(
-              content: Text('Account deletion failed: ${e.message}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        _handleDeleteAccountError(e, scaffoldMessenger);
       }
     } catch (e) {
       if (mounted) {
-        navigator.pop(); // Close loading dialog if open
         scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('Account deletion failed: $e'),
@@ -803,7 +801,65 @@ Note: This is a demo export. In the full version, actual data would be exported 
           ),
         );
       }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDeletingAccount = false;
+        });
+      }
     }
+  }
+
+  Future<void> _deleteAccountWithTimeout(AuthService authService) async {
+    try {
+      // Add timeout to prevent infinite waiting
+      await authService.deleteAccount().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Account deletion timed out');
+        },
+      );
+    } on TimeoutException {
+      rethrow;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  void _handleDeleteAccountError(FirebaseAuthException e, ScaffoldMessengerState scaffoldMessenger) {
+    String message;
+
+    switch (e.code) {
+      case 'requires-recent-login':
+        message = 'Please re-authenticate and try again.';
+        break;
+      case 'user-not-found':
+        message = 'User account not found.';
+        break;
+      case 'network-request-failed':
+        message = 'Network error. Please check your connection and try again.';
+        break;
+      case 'too-many-requests':
+        message = 'Too many requests. Please try again later.';
+        break;
+      default:
+        message = 'Account deletion failed: ${e.message}';
+    }
+
+    scaffoldMessenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Dismiss',
+          textColor: Colors.white,
+          onPressed: () {
+            scaffoldMessenger.hideCurrentSnackBar();
+          },
+        ),
+      ),
+    );
   }
 }
 
@@ -885,7 +941,7 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     // Validate input
     final name = _nameController.text.trim();
     final phoneNumber = _phoneController.text.trim();
-    
+
     // Capture context-dependent objects before async operations
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
@@ -953,4 +1009,3 @@ class _EditProfileDialogState extends State<_EditProfileDialog> {
     }
   }
 }
-

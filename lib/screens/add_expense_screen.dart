@@ -289,7 +289,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         if (_selectedGroup == null)
                           TextButton.icon(
                             onPressed: (_isLoading || _isRequestingPermission) ? null : _showAddPersonDialog,
-                            icon: (_isLoading || _isRequestingPermission) 
+                            icon: (_isLoading || _isRequestingPermission)
                                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.person_add),
                             label: Text(_isRequestingPermission ? 'Loading...' : 'Add Person'),
@@ -362,7 +362,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _showAddPersonDialog() {
-    final contactsService = Provider.of<ContactsService>(context, listen: false);
     final nameController = TextEditingController();
 
     showDialog(
@@ -438,13 +437,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             onPressed: () async {
                               setState(() => _isRequestingPermission = true);
                               setDialogState(() {}); // Trigger rebuild
-                              
+
                               final scaffoldMessenger = ScaffoldMessenger.of(context);
                               final granted = await contactsService.requestPermission();
-                              
+
                               if (mounted) {
                                 setState(() => _isRequestingPermission = false);
-                                
+
                                 if (granted) {
                                   setDialogState(() {}); // Trigger rebuild to show contacts
                                 } else {

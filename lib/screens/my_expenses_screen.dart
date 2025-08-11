@@ -113,7 +113,8 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
           final filteredExpenses = _applyDateFilter(myExpenses);
 
           // Calculate totals including settlements for real-time balance updates
-          final totalExpenses = _calculateTotalExpensesWithSettlements(filteredExpenses, settlements, currentUser.uid);
+          final totalExpenses = _calculateTotalExpensesWithSettlements(
+              filteredExpenses, settlements, currentUser.uid);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -142,8 +143,18 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
     String filterText = 'All expenses';
     if (_selectedMonth != null && _selectedYear != null) {
       final months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December'
       ];
       filterText = '${months[_selectedMonth!.month - 1]} $_selectedYear';
     } else if (_selectedYear != null) {
@@ -237,7 +248,8 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
                   Text(
                     'Your Share',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Theme.of(context).primaryColor.withValues(alpha: 0.8),
+                      color:
+                      Theme.of(context).primaryColor.withValues(alpha: 0.8),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -287,7 +299,9 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (totals['balance'] ?? 0) >= 0 ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                color: (totals['balance'] ?? 0) >= 0
+                    ? Colors.green.withValues(alpha: 0.1)
+                    : Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -295,7 +309,9 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
                   Text(
                     (totals['balance'] ?? 0) >= 0 ? 'You Are Owed' : 'You Owe',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: (totals['balance'] ?? 0) >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                      color: (totals['balance'] ?? 0) >= 0
+                          ? Colors.green.shade700
+                          : Colors.red.shade700,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -305,16 +321,20 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
                         : '₹${(totals['balance'] ?? 0).abs().toStringAsFixed(2)}',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: (totals['balance'] ?? 0) >= 0 ? Colors.green.shade700 : Colors.red.shade700,
+                      color: (totals['balance'] ?? 0) >= 0
+                          ? Colors.green.shade700
+                          : Colors.red.shade700,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    (totals['balance'] ?? 0) >= 0 
+                    (totals['balance'] ?? 0) >= 0
                         ? 'Others owe you this amount'
                         : 'You owe others this amount',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: (totals['balance'] ?? 0) >= 0 ? Colors.green.shade600 : Colors.red.shade600,
+                      color: (totals['balance'] ?? 0) >= 0
+                          ? Colors.green.shade600
+                          : Colors.red.shade600,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -400,14 +420,17 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                backgroundColor:
+                Theme.of(context).primaryColor.withValues(alpha: 0.1),
                 child: Icon(
                   Icons.receipt,
                   color: Theme.of(context).primaryColor,
                 ),
               ),
               title: Text(
-                expense.description.isNotEmpty ? expense.description : 'No description',
+                expense.description.isNotEmpty
+                    ? expense.description
+                    : 'No description',
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: Column(
@@ -459,7 +482,8 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
                           );
                           if (updated == true && mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Expense updated')),
+                              const SnackBar(
+                                  content: Text('Expense updated')),
                             );
                           }
                           break;
@@ -532,11 +556,12 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
     }).toList();
   }
 
-  Stream<Map<String, dynamic>> _getExpensesAndSettlementsData(String userId, DatabaseService dbService) {
+  Stream<Map<String, dynamic>> _getExpensesAndSettlementsData(
+      String userId, DatabaseService dbService) {
     return Rx.combineLatest2(
       dbService.getAllExpenses(),
       dbService.getAllSettlementsForUser(userId),
-      (List<ExpenseModel> expenses, List<SettlementModel> settlements) {
+          (List<ExpenseModel> expenses, List<SettlementModel> settlements) {
         return {
           'expenses': expenses,
           'settlements': settlements,
@@ -545,14 +570,15 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
     );
   }
 
-  Map<String, double> _calculateTotalExpenses(List<ExpenseModel> expenses, String currentUserId) {
+  Map<String, double> _calculateTotalExpenses(
+      List<ExpenseModel> expenses, String currentUserId) {
     double totalPaid = 0.0; // money you actually paid
     double totalOwed = 0.0; // money you owe to others (your share in expenses you didn't pay)
     double totalOwedToYou = 0.0; // money others owe you (your share in expenses you paid)
 
     for (final expense in expenses) {
       final userShare = expense.split[currentUserId] ?? 0.0;
-      
+
       if (expense.payer == currentUserId) {
         // You paid this expense
         totalPaid += expense.amount;
@@ -566,7 +592,7 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
 
     // Total Amount: Shows only what you owe (your share in all expenses)
     final totalOwedAmount = totalOwed;
-    
+
     // Balance: What others owe you minus what you owe others
     final balance = totalOwedToYou - totalOwed;
 
@@ -579,16 +605,15 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
   }
 
   Map<String, double> _calculateTotalExpensesWithSettlements(
-    List<ExpenseModel> expenses, 
-    List<SettlementModel> settlements, 
-    String currentUserId
-  ) {
+      List<ExpenseModel> expenses,
+      List<SettlementModel> settlements,
+      String currentUserId) {
     // First calculate base totals from expenses
     final baseTotals = _calculateTotalExpenses(expenses, currentUserId);
-    
+
     // Apply settlements to adjust the balance
     double settlementAdjustment = 0.0;
-    
+
     for (final settlement in settlements) {
       if (settlement.status == SettlementStatus.completed) {
         if (settlement.fromUser == currentUserId) {
@@ -600,10 +625,10 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
         }
       }
     }
-    
+
     // Update the balance with settlement adjustments
     final adjustedBalance = baseTotals['balance']! + settlementAdjustment;
-    
+
     return {
       'total': baseTotals['total']!, // Your share remains the same
       'paid': baseTotals['paid']!, // What you paid remains the same
@@ -674,8 +699,18 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
                       final month = index + 1;
                       final date = DateTime(_selectedYear!, month);
                       final monthNames = [
-                        'January', 'February', 'March', 'April', 'May', 'June',
-                        'July', 'August', 'September', 'October', 'November', 'December'
+                        'January',
+                        'February',
+                        'March',
+                        'April',
+                        'May',
+                        'June',
+                        'July',
+                        'August',
+                        'September',
+                        'October',
+                        'November',
+                        'December'
                       ];
                       return DropdownMenuItem<DateTime?>(
                         value: date,
@@ -713,6 +748,10 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
   }
 
   Future<bool> _showDeleteExpenseDialog(ExpenseModel expense) async {
+    // Capture ScaffoldMessengerState and DatabaseService before async operations
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -739,11 +778,11 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
 
     if (confirmed != true) return false;
 
-    final dbService = Provider.of<DatabaseService>(context, listen: false);
     final success = await dbService.deleteExpense(expense.id, expense.groupId);
-    
+
+    if (!mounted) return false;
+
     if (success) {
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('${expense.description} deleted'),
@@ -757,7 +796,6 @@ class _MyExpensesScreenState extends State<MyExpensesScreen> {
       );
       return true;
     } else {
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(dbService.errorMessage ?? 'Failed to delete expense'),

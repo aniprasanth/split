@@ -4,6 +4,7 @@ import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/group_model.dart';
 import 'package:splitzy/models/settlement_model.dart';
 import 'package:splitzy/services/cache_service.dart';
+// ignore: unused_import
 import 'package:splitzy/services/calculation_isolates.dart';
 import 'package:logger/logger.dart';
 import 'package:rxdart/rxdart.dart';
@@ -58,7 +59,7 @@ class OptimizedDataService extends ChangeNotifier {
   Future<void> _initializeData() async {
     try {
       _setLoading(true);
-      
+
       // Load cached data first for immediate UI response
       final cachedExpenses = _cacheService.getCachedExpenses('all_expenses');
       if (cachedExpenses != null) {
@@ -73,7 +74,7 @@ class OptimizedDataService extends ChangeNotifier {
       // Start listening to real-time updates
       _listenToExpenses();
       _listenToGroups();
-      
+
     } catch (e) {
       _logger.e('Error initializing data: $e');
       _setError('Failed to initialize data');
@@ -89,7 +90,7 @@ class OptimizedDataService extends ChangeNotifier {
         .orderBy('date', descending: true)
         .snapshots()
         .listen(
-      (snapshot) {
+          (snapshot) {
         try {
           final expenses = snapshot.docs
               .map((doc) {
@@ -109,10 +110,10 @@ class OptimizedDataService extends ChangeNotifier {
 
           // Cache the data
           _cacheService.cacheExpenses('all_expenses', expenses);
-          
+
           // Update stream
           _expensesSubject.add(expenses);
-          
+
           _logger.d('Expenses updated: ${expenses.length} items');
         } catch (e) {
           _logger.e('Error processing expenses: $e');
@@ -133,7 +134,7 @@ class OptimizedDataService extends ChangeNotifier {
         .orderBy('updatedAt', descending: true)
         .snapshots()
         .listen(
-      (snapshot) {
+          (snapshot) {
         try {
           final groups = snapshot.docs
               .map((doc) {
@@ -153,10 +154,10 @@ class OptimizedDataService extends ChangeNotifier {
 
           // Cache the data
           _cacheService.cacheGroups('all_groups', groups);
-          
+
           // Update stream
           _groupsSubject.add(groups);
-          
+
           _logger.d('Groups updated: ${groups.length} items');
         } catch (e) {
           _logger.e('Error processing groups: $e');
@@ -172,7 +173,7 @@ class OptimizedDataService extends ChangeNotifier {
   /// Get user groups with caching
   Stream<List<GroupModel>> getUserGroups(String userId) {
     final cacheKey = 'user_groups_$userId';
-    
+
     // Check cache first
     final cachedGroups = _cacheService.getCachedGroups(cacheKey);
     if (cachedGroups != null) {
@@ -190,7 +191,7 @@ class OptimizedDataService extends ChangeNotifier {
   /// Get user settlements with caching
   Stream<List<SettlementModel>> getUserSettlements(String userId) {
     final cacheKey = 'user_settlements_$userId';
-    
+
     // Check cache first
     final cachedSettlements = _cacheService.getCachedSettlements(cacheKey);
     if (cachedSettlements != null) {
@@ -204,44 +205,44 @@ class OptimizedDataService extends ChangeNotifier {
         .orderBy('date', descending: true)
         .snapshots()
         .asyncMap((fromUserSnapshot) async {
-          final toUserSnapshot = await _db
-              .collection('settlements')
-              .where('toUser', isEqualTo: userId)
-              .orderBy('date', descending: true)
-              .get();
+      final toUserSnapshot = await _db
+          .collection('settlements')
+          .where('toUser', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .get();
 
-          final allDocs = [...fromUserSnapshot.docs, ...toUserSnapshot.docs];
-          
-          final settlements = allDocs
-              .map((doc) {
-            try {
-              return SettlementModel.fromMap({
-                'id': doc.id,
-                ...doc.data(),
-              });
-            } catch (e) {
-              _logger.e('Error parsing settlement ${doc.id}: $e');
-              return null;
-            }
-          })
-              .where((settlement) => settlement != null)
-              .cast<SettlementModel>()
-              .toList();
+      final allDocs = [...fromUserSnapshot.docs, ...toUserSnapshot.docs];
 
-          _cacheService.cacheSettlements(cacheKey, settlements);
-          return settlements;
-        });
+      final settlements = allDocs
+          .map((doc) {
+        try {
+          return SettlementModel.fromMap({
+            'id': doc.id,
+            ...doc.data(),
+          });
+        } catch (e) {
+          _logger.e('Error parsing settlement ${doc.id}: $e');
+          return null;
+        }
+      })
+          .where((settlement) => settlement != null)
+          .cast<SettlementModel>()
+          .toList();
+
+      _cacheService.cacheSettlements(cacheKey, settlements);
+      return settlements;
+    });
   }
 
   /// Optimized settlement calculation with caching
   Future<Map<String, dynamic>> calculateSettlementsOptimized(
-    String userId,
-    List<ExpenseModel> expenses,
-    List<SettlementModel> settlements,
-    Map<String, GroupModel> groups,
-  ) async {
+      String userId,
+      List<ExpenseModel> expenses,
+      List<SettlementModel> settlements,
+      Map<String, GroupModel> groups,
+      ) async {
     final cacheKey = 'settlement_calc_${userId}_${expenses.length}_${settlements.length}';
-    
+
     // Check cache first
     final cachedResult = _cacheService.getCachedCalculation(cacheKey);
     if (cachedResult != null) {
@@ -249,7 +250,7 @@ class OptimizedDataService extends ChangeNotifier {
     }
 
     // Calculate if not cached
-    final result = await _calculateSettlementsWithHistoryAsync(
+    final result = await _calculateSettlementsOptimized(
       expenses,
       settlements,
       userId,
@@ -258,8 +259,81 @@ class OptimizedDataService extends ChangeNotifier {
 
     // Cache the result
     _cacheService.cacheCalculation(cacheKey, result);
-    
+
     return result;
+  }
+
+  /// Calculate settlements with optimized performance
+  Future<Map<String, dynamic>> _calculateSettlementsOptimized(
+      List<ExpenseModel> expenses,
+      List<SettlementModel> settlements,
+      String currentUserId,
+      Map<String, GroupModel> groups,
+      ) async {
+    // Prepare plain maps for isolate
+    final expenseMaps = expenses.map((e) => e.toMap()).toList();
+    final balances = await compute(balancesFromExpenseMaps, expenseMaps);
+
+    // Apply completed settlements to balances
+    final Map<String, double> adjustedBalances = Map.from(balances);
+
+    for (final settlement in settlements) {
+      if (settlement.status == SettlementStatus.completed &&
+          !settlement.isDeleted &&
+          settlement.involves(currentUserId)) {
+        // Apply settlement to balances
+        if (settlement.fromUser == currentUserId) {
+          // Current user paid, reduce their balance
+          adjustedBalances[settlement.fromUser] =
+              (adjustedBalances[settlement.fromUser] ?? 0) - settlement.amount;
+          adjustedBalances[settlement.toUser] =
+              (adjustedBalances[settlement.toUser] ?? 0) + settlement.amount;
+        } else if (settlement.toUser == currentUserId) {
+          // Current user received, increase their balance
+          adjustedBalances[settlement.fromUser] =
+              (adjustedBalances[settlement.fromUser] ?? 0) - settlement.amount;
+          adjustedBalances[settlement.toUser] =
+              (adjustedBalances[settlement.toUser] ?? 0) + settlement.amount;
+        }
+      }
+    }
+
+    // Gather member names (small map; fine on UI thread)
+    final Map<String, String> memberNames = {};
+    for (final g in groups.values) {
+      memberNames.addAll(g.memberNames);
+    }
+    for (final e in expenses) {
+      memberNames[e.payer] = e.payerName;
+    }
+
+    // Add names from settlements for deleted groups
+    for (final s in settlements) {
+      if (s.isDeleted) {
+        memberNames[s.fromUser] = s.fromUserName;
+        memberNames[s.toUser] = s.toUserName;
+      }
+    }
+
+    // Separate into to get (you owe) and to give (owes you) - only unsettled amounts
+    final Map<String, double> youOwe = {};
+    final Map<String, double> owesYou = {};
+    adjustedBalances.forEach((memberId, balance) {
+      if (memberId != currentUserId && balance.abs() > 0.01) {
+        // Use small threshold for rounding
+        if (balance > 0) {
+          owesYou[memberId] = balance;
+        } else {
+          youOwe[memberId] = -balance;
+        }
+      }
+    });
+
+    return {
+      'youOwe': youOwe,
+      'owesYou': owesYou,
+      'memberNames': memberNames,
+    };
   }
 
   /// Add expense with optimistic update
@@ -316,7 +390,7 @@ class OptimizedDataService extends ChangeNotifier {
           .collection('settlements')
           .doc(settlement.id)
           .set(settlement.toMap());
-      
+
       await _db.collection('settlements').doc(settlement.id).set(settlement.toMap());
 
       _logger.i('Settlement added successfully with optimistic update');
@@ -351,9 +425,14 @@ class OptimizedDataService extends ChangeNotifier {
       return snapshot.docs
           .map((doc) {
         try {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data == null) {
+            _logger.w('Expense document ${doc.id} has no data');
+            return null;
+          }
           return ExpenseModel.fromMap({
             'id': doc.id,
-            ...doc.data(),
+            ...data,
           });
         } catch (e) {
           _logger.e('Error parsing expense ${doc.id}: $e');

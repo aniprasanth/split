@@ -8,8 +8,7 @@ import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/group_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:splitzy/models/settlement_model.dart';
-import 'package:flutter/foundation.dart';
-import 'package:splitzy/services/calculation_isolates.dart';
+import 'package:rxdart/rxdart.dart';
 
 class SettleUpScreen extends StatefulWidget {
   const SettleUpScreen({super.key});
@@ -57,78 +56,6 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
         );
       },
     ).switchMap((future) => Stream.fromFuture(future));
-  }
-
-  Future<Map<String, dynamic>> _calculateSettlementsWithHistoryAsync(
-      List<ExpenseModel> expenses,
-      List<SettlementModel> settlements,
-      String currentUserId,
-      Map<String, GroupModel> groups,
-      ) async {
-    // Prepare plain maps for isolate
-    final expenseMaps = expenses.map((e) => e.toMap()).toList();
-    final balances = await compute(balancesFromExpenseMaps, expenseMaps);
-
-    // Apply completed settlements to balances
-    final Map<String, double> adjustedBalances = Map.from(balances);
-
-    for (final settlement in settlements) {
-      if (settlement.status == SettlementStatus.completed &&
-          !settlement.isDeleted &&
-          settlement.involves(currentUserId)) {
-        // Apply settlement to balances
-        if (settlement.fromUser == currentUserId) {
-          // Current user paid, reduce their balance
-          adjustedBalances[settlement.fromUser] =
-              (adjustedBalances[settlement.fromUser] ?? 0) - settlement.amount;
-          adjustedBalances[settlement.toUser] =
-              (adjustedBalances[settlement.toUser] ?? 0) + settlement.amount;
-        } else if (settlement.toUser == currentUserId) {
-          // Current user received, increase their balance
-          adjustedBalances[settlement.fromUser] =
-              (adjustedBalances[settlement.fromUser] ?? 0) - settlement.amount;
-          adjustedBalances[settlement.toUser] =
-              (adjustedBalances[settlement.toUser] ?? 0) + settlement.amount;
-        }
-      }
-    }
-
-    // Gather member names (small map; fine on UI thread)
-    final Map<String, String> memberNames = {};
-    for (final g in groups.values) {
-      memberNames.addAll(g.memberNames);
-    }
-    for (final e in expenses) {
-      memberNames[e.payer] = e.payerName;
-    }
-
-    // Add names from settlements for deleted groups
-    for (final s in settlements) {
-      if (s.isDeleted) {
-        memberNames[s.fromUser] = s.fromUserName;
-        memberNames[s.toUser] = s.toUserName;
-      }
-    }
-
-    // Separate into to get (you owe) and to give (owes you) - only unsettled amounts
-    final Map<String, double> youOwe = {};
-    final Map<String, double> owesYou = {};
-    adjustedBalances.forEach((memberId, balance) {
-      if (memberId != currentUserId && balance.abs() > 0.01) {
-        // Use small threshold for rounding
-        if (balance > 0) {
-          owesYou[memberId] = balance;
-        } else {
-          youOwe[memberId] = -balance;
-        }
-      }
-    });
-
-    return {
-      'youOwe': youOwe,
-      'owesYou': owesYou,
-      'memberNames': memberNames,
-    };
   }
 
   @override
@@ -546,7 +473,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        final scaffoldMessenger = ScaffoldMessenger.of(context);
+        scaffoldMessenger.showSnackBar(
           const SnackBar(
             content: Text('No payment app found'),
             behavior: SnackBarBehavior.floating,

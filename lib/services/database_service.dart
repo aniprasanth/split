@@ -326,9 +326,14 @@ class DatabaseService extends ChangeNotifier {
       final doc = await _db.collection('groups').doc(groupId).get();
 
       if (doc.exists) {
+        final data = doc.data();
+        if (data == null) {
+          _logger.w('Group document ${doc.id} has no data');
+          return null;
+        }
         return GroupModel.fromMap({
           'id': doc.id,
-          ...doc.data()!,
+          ...data,
         });
       }
       return null;
@@ -346,7 +351,7 @@ class DatabaseService extends ChangeNotifier {
 
       // Use batch write for better performance and atomicity
       final batch = _db.batch();
-      
+
       // Add to main expenses collection for global queries
       batch.set(_db.collection('expenses').doc(expense.id), expense.toMap());
 
@@ -750,15 +755,20 @@ class DatabaseService extends ChangeNotifier {
             .where('toUser', isEqualTo: userId)
             .orderBy('date', descending: true)
             .snapshots(),
-        (QuerySnapshot fromUserSnapshot, QuerySnapshot toUserSnapshot) {
+            (QuerySnapshot fromUserSnapshot, QuerySnapshot toUserSnapshot) {
           final allDocs = [...fromUserSnapshot.docs, ...toUserSnapshot.docs];
-          
+
           return allDocs
               .map((doc) {
             try {
+              final data = doc.data() as Map<String, dynamic>?;
+              if (data == null) {
+                _logger.w('Settlement document ${doc.id} has no data');
+                return null;
+              }
               return SettlementModel.fromMap({
                 'id': doc.id,
-                ...doc.data(),
+                ...data,
               });
             } catch (e) {
               _logger.e('Error parsing settlement ${doc.id}: $e');
@@ -791,15 +801,20 @@ class DatabaseService extends ChangeNotifier {
             .where('toUser', isEqualTo: userId)
             .orderBy('date', descending: true)
             .snapshots(),
-        (QuerySnapshot fromUserSnapshot, QuerySnapshot toUserSnapshot) {
+            (QuerySnapshot fromUserSnapshot, QuerySnapshot toUserSnapshot) {
           final allDocs = [...fromUserSnapshot.docs, ...toUserSnapshot.docs];
-          
+
           return allDocs
               .map((doc) {
             try {
+              final data = doc.data() as Map<String, dynamic>?;
+              if (data == null) {
+                _logger.w('Historical settlement document ${doc.id} has no data');
+                return null;
+              }
               return SettlementModel.fromMap({
                 'id': doc.id,
-                ...doc.data(),
+                ...data,
               });
             } catch (e) {
               _logger.e('Error parsing historical settlement ${doc.id}: $e');

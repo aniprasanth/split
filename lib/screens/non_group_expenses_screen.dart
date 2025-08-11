@@ -95,6 +95,7 @@ class NonGroupExpensesScreen extends StatelessWidget {
             itemCount: nonGroupExpenses.length,
             itemBuilder: (context, index) {
               final expense = nonGroupExpenses[index];
+              final scaffoldMessenger = ScaffoldMessenger.of(context); // Store before async
               return Dismissible(
                 key: Key(expense.id),
                 direction: DismissDirection.endToStart,
@@ -110,7 +111,7 @@ class NonGroupExpensesScreen extends StatelessWidget {
                 ),
                 confirmDismiss: (direction) => _showDeleteExpenseDialog(context, expense),
                 onDismissed: (direction) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  scaffoldMessenger.showSnackBar(
                     SnackBar(
                       content: Text('${expense.description} deleted'),
                       action: SnackBarAction(
@@ -189,6 +190,7 @@ class NonGroupExpensesScreen extends StatelessWidget {
                           onSelected: (value) async {
                             switch (value) {
                               case 'edit':
+                                final scaffoldMessenger = ScaffoldMessenger.of(context); // Store before async
                                 final updated = await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -196,7 +198,6 @@ class NonGroupExpensesScreen extends StatelessWidget {
                                   ),
                                 );
                                 if (updated == true) {
-                                  final scaffoldMessenger = ScaffoldMessenger.of(context);
                                   scaffoldMessenger.showSnackBar(
                                     const SnackBar(content: Text('Expense updated')),
                                   );
@@ -233,6 +234,7 @@ class NonGroupExpensesScreen extends StatelessWidget {
                       ],
                     ),
                     onTap: () async {
+                      final scaffoldMessenger = ScaffoldMessenger.of(context); // Store before async
                       final updated = await Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -240,7 +242,6 @@ class NonGroupExpensesScreen extends StatelessWidget {
                         ),
                       );
                       if (updated == true) {
-                        final scaffoldMessenger = ScaffoldMessenger.of(context);
                         scaffoldMessenger.showSnackBar(
                           const SnackBar(content: Text('Expense updated')),
                         );
@@ -257,6 +258,10 @@ class NonGroupExpensesScreen extends StatelessWidget {
   }
 
   Future<bool> _showDeleteExpenseDialog(BuildContext context, ExpenseModel expense) async {
+    // Capture ScaffoldMessengerState and DatabaseService before async operations
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -283,11 +288,11 @@ class NonGroupExpensesScreen extends StatelessWidget {
 
     if (confirmed != true) return false;
 
-    final dbService = Provider.of<DatabaseService>(context, listen: false);
     final success = await dbService.deleteExpense(expense.id);
-    
+
+    // Since this is a StatelessWidget, we cannot check 'mounted'.
+    // However, the dialog is modal, and ScaffoldMessenger is captured, so it's safe to proceed.
     if (success) {
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('${expense.description} deleted'),
@@ -301,7 +306,6 @@ class NonGroupExpensesScreen extends StatelessWidget {
       );
       return true;
     } else {
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(dbService.errorMessage ?? 'Failed to delete expense'),

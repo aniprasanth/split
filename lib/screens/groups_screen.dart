@@ -101,14 +101,14 @@ class _GroupsScreenState extends State<GroupsScreen> {
               ElevatedButton(
                 onPressed: _isCreating
                     ? null
-                    : () {
+                    : () async {
                   if (nameController.text.trim().isNotEmpty) {
-                    _createGroup(nameController.text.trim()).then((_) {
-                      if (mounted) {
-                        Navigator.pop(context);
-                      }
-                    });
-                  }
+                    final navigator = Navigator.of(context);
+                    await _createGroup(nameController.text.trim());
+                    if (mounted) {
+                      navigator.pop();
+                    }    
+                  }   
                 },
                 child: _isCreating
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))

@@ -192,7 +192,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text('Paid by ${expense.payerName} • ${expense.date.toLocal().toString().split(' ').first}')
+                      Text('Paid by ${expense.payerName} • ${expense.date.toLocal().toString().split(' ').first}'),
                     ],
                   ),
                   trailing: Row(
@@ -212,6 +212,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                         onSelected: (value) async {
                           switch (value) {
                             case 'edit':
+                              final scaffoldMessenger = ScaffoldMessenger.of(context); // Store before async
                               final updated = await Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -222,7 +223,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                                 ),
                               );
                               if (updated == true && mounted) {
-                                final scaffoldMessenger = ScaffoldMessenger.of(context);
                                 scaffoldMessenger.showSnackBar(
                                   const SnackBar(content: Text('Expense updated')),
                                 );
@@ -259,6 +259,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                     ],
                   ),
                   onTap: () async {
+                    final scaffoldMessenger = ScaffoldMessenger.of(context); // Store before async
                     final updated = await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -269,7 +270,6 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                       ),
                     );
                     if (updated == true && mounted) {
-                      final scaffoldMessenger = ScaffoldMessenger.of(context);
                       scaffoldMessenger.showSnackBar(
                         const SnackBar(content: Text('Expense updated')),
                       );
@@ -468,7 +468,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: _isUpdatingGroup ? null : () async {
+                onPressed: _isUpdatingGroup
+                    ? null
+                    : () async {
                   final newName = nameController.text.trim();
                   if (newName.isEmpty) {
                     ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -512,7 +514,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                   }
                 },
                 child: _isUpdatingGroup
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                     : const Text('Update'),
               ),
             ],
@@ -543,7 +548,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                       trailing: (member != 'You' && member != currentGroup.createdBy)
                           ? IconButton(
                         icon: const Icon(Icons.remove_circle, color: Colors.red),
-                        onPressed: _isManagingMembers ? null : () async {
+                        onPressed: _isManagingMembers
+                            ? null
+                            : () async {
                           setDialogState(() => _isManagingMembers = true);
                           final dbService = Provider.of<DatabaseService>(context, listen: false);
                           final success = await dbService.removeMemberFromGroup(currentGroup.id, member);
@@ -655,7 +662,9 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: _isDeletingGroup ? null : () async {
+                onPressed: _isDeletingGroup
+                    ? null
+                    : () async {
                   setDialogState(() => _isDeletingGroup = true);
                   final dbService = Provider.of<DatabaseService>(context, listen: false);
 
@@ -693,7 +702,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                   foregroundColor: Colors.white,
                 ),
                 child: _isDeletingGroup
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Text('Delete'),
               ),
             ],
@@ -704,6 +716,10 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
   }
 
   Future<bool> _showDeleteExpenseDialog(ExpenseModel expense) async {
+    // Capture ScaffoldMessengerState and DatabaseService before async operations
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final dbService = Provider.of<DatabaseService>(context, listen: false);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -730,13 +746,12 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
 
     if (confirmed != true) return false;
 
-    final dbService = Provider.of<DatabaseService>(context, listen: false);
     final success = await dbService.deleteExpense(expense.id, currentGroup.id);
-    
+
     if (!mounted) return false;
 
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('${expense.description} deleted'),
           action: SnackBarAction(
@@ -749,7 +764,7 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
       );
       return true;
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(dbService.errorMessage ?? 'Failed to delete expense'),
           backgroundColor: Colors.red,
