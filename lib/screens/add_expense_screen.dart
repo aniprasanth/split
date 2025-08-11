@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart'; // for kDebugMode
 import 'package:provider/provider.dart';
 import 'package:splitzy/models/group_model.dart';
 import 'package:splitzy/models/expense_model.dart';
@@ -39,20 +38,21 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     super.initState();
     _selectedGroup = widget.group;
     _loadUserGroups();
-    
+
     final authService = Provider.of<AuthService>(context, listen: false);
     final currentUser = authService.currentUser;
-    
+
     if (currentUser != null) {
       _selectedPayer = currentUser.uid;
       // For non-group expenses, initialize with current user
       if (_selectedGroup == null) {
         _availableMembers = [currentUser.uid];
-        _memberNames = {currentUser.uid: currentUser.displayName};
+        // Fixed: Remove null-aware operator since displayName can't be null
+        _memberNames = {currentUser.uid: currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You'};
         _selectedMembers = [currentUser.uid];
       }
     }
-    
+
     if (_selectedGroup != null) {
       _initializeGroupData();
     }
@@ -112,9 +112,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
             onPressed: _isLoading
                 ? null
                 : () {
-                    FocusScope.of(context).unfocus();
-                    _saveExpense();
-                  },
+              FocusScope.of(context).unfocus();
+              _saveExpense();
+            },
             child: _isLoading
                 ? const SizedBox(
               width: 16,
@@ -174,27 +174,28 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         onChanged: _isLoading
                             ? null
                             : (group) {
-                                setState(() {
-                                  _selectedGroup = group;
-                                  if (group != null) {
-                                    _initializeGroupData();
-                                  } else {
-                                    // For non-group expense, initialize with current user
-                                    final authService = Provider.of<AuthService>(context, listen: false);
-                                    final currentUser = authService.currentUser;
-                                    if (currentUser != null) {
-                                      // Initialize with current user if no members exist
-                                      if (_availableMembers.isEmpty) {
-                                        _availableMembers = [currentUser.uid];
-                                        _memberNames = {currentUser.uid: currentUser.displayName ?? 'You'};
-                                        _selectedPayer = currentUser.uid;
-                                        _selectedMembers = [currentUser.uid];
-                                      }
-                                      // Keep existing members if they were already added
-                                    }
-                                  }
-                                });
-                              },
+                          setState(() {
+                            _selectedGroup = group;
+                            if (group != null) {
+                              _initializeGroupData();
+                            } else {
+                              // For non-group expense, initialize with current user
+                              final authService = Provider.of<AuthService>(context, listen: false);
+                              final currentUser = authService.currentUser;
+                              if (currentUser != null) {
+                                // Initialize with current user if no members exist
+                                if (_availableMembers.isEmpty) {
+                                  _availableMembers = [currentUser.uid];
+                                  // Fixed: Remove null-aware operator
+                                  _memberNames = {currentUser.uid: currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You'};
+                                  _selectedPayer = currentUser.uid;
+                                  _selectedMembers = [currentUser.uid];
+                                }
+                                // Keep existing members if they were already added
+                              }
+                            }
+                          });
+                        },
                         validator: (value) => null,
                       ),
                   ],
@@ -469,7 +470,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   Future<void> _saveExpense() async {
     // Prevent multiple simultaneous calls
     if (_isLoading) return;
-    
+
     // Validate form
     if (!_formKey.currentState!.validate()) {
       return;
@@ -486,7 +487,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       _showErrorSnackBar('Please select at least one person to split the expense with');
       return;
     }
-    
+
     // For non-group expenses, ensure at least 2 people are involved
     if (_selectedGroup == null && _selectedMembers.length < 2) {
       _showErrorSnackBar('Please add at least one more person to split the expense');
@@ -550,6 +551,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
       // Save to database using Provider (async write)
       final databaseService = Provider.of<DatabaseService>(context, listen: false);
+
+      // Store context-dependent objects before async operation
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      final navigator = Navigator.of(context);
+
       // Move DB write to async and keep UI responsive
       final success = await databaseService.addExpense(expense);
 
@@ -560,7 +566,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (!mounted) return;
 
       // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('Expense "$description" added successfully!'),
           backgroundColor: Colors.green,
@@ -569,7 +575,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       );
 
       // Return to previous screen
-      Navigator.pop(context, true); // Return true to indicate success
+      navigator.pop(true); // Return true to indicate success
 
     } catch (e) {
       if (!mounted) return;

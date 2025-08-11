@@ -14,7 +14,7 @@ class TransactionHistoryScreen extends StatefulWidget {
 class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  bool _isLoading = false;
+  // Removed unused _isLoading field
 
   @override
   void initState() {
@@ -111,18 +111,18 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: isDeleted 
-                      ? Colors.red.shade100 
-                      : isHistorical 
-                          ? Colors.orange.shade100 
-                          : Colors.green.shade100,
+                  backgroundColor: isDeleted
+                      ? Colors.red.shade100
+                      : isHistorical
+                      ? Colors.orange.shade100
+                      : Colors.green.shade100,
                   child: Icon(
                     isDeleted ? Icons.delete : Icons.receipt,
-                    color: isDeleted 
-                        ? Colors.red.shade700 
-                        : isHistorical 
-                            ? Colors.orange.shade700 
-                            : Colors.green.shade700,
+                    color: isDeleted
+                        ? Colors.red.shade700
+                        : isHistorical
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
                   ),
                 ),
                 title: Text(
@@ -144,8 +144,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
                     ),
                     Text(
                       DateFormat('MMM dd, yyyy').format(
-                        expense['date'] is String 
-                            ? DateTime.parse(expense['date']) 
+                        expense['date'] is String
+                            ? DateTime.parse(expense['date'])
                             : expense['date'],
                       ),
                       style: TextStyle(
@@ -222,7 +222,7 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
             final status = settlement['status'] ?? 'pending';
             final deletedGroupName = settlement['deletedGroupName'];
 
-            Color statusColor;
+            MaterialColor statusColor;
             IconData statusIcon;
             String statusText;
 
@@ -247,13 +247,13 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: isDeleted 
-                      ? Colors.red.shade100 
+                  backgroundColor: isDeleted
+                      ? Colors.red.shade100
                       : statusColor.shade100,
                   child: Icon(
                     isDeleted ? Icons.delete : statusIcon,
-                    color: isDeleted 
-                        ? Colors.red.shade700 
+                    color: isDeleted
+                        ? Colors.red.shade700
                         : statusColor.shade700,
                   ),
                 ),
@@ -276,8 +276,8 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen>
                     ),
                     Text(
                       DateFormat('MMM dd, yyyy').format(
-                        settlement['date'] is String 
-                            ? DateTime.parse(settlement['date']) 
+                        settlement['date'] is String
+                            ? DateTime.parse(settlement['date'])
                             : settlement['date'],
                       ),
                       style: TextStyle(

@@ -109,18 +109,18 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: isDeleted 
-                      ? Colors.red.shade100 
-                      : isHistorical 
-                          ? Colors.orange.shade100 
-                          : Colors.green.shade100,
+                  backgroundColor: isDeleted
+                      ? Colors.red.shade100
+                      : isHistorical
+                      ? Colors.orange.shade100
+                      : Colors.green.shade100,
                   child: Icon(
                     isDeleted ? Icons.delete : Icons.receipt,
-                    color: isDeleted 
-                        ? Colors.red.shade700 
-                        : isHistorical 
-                            ? Colors.orange.shade700 
-                            : Colors.green.shade700,
+                    color: isDeleted
+                        ? Colors.red.shade700
+                        : isHistorical
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
                   ),
                 ),
                 title: Text(
@@ -142,8 +142,8 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                     ),
                     Text(
                       DateFormat('MMM dd, yyyy').format(
-                        expense['date'] is String 
-                            ? DateTime.parse(expense['date']) 
+                        expense['date'] is String
+                            ? DateTime.parse(expense['date'])
                             : expense['date'],
                       ),
                       style: TextStyle(
@@ -220,7 +220,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
             final status = settlement['status'] ?? 'pending';
             final deletedGroupName = settlement['deletedGroupName'];
 
-            Color statusColor;
+            MaterialColor statusColor;
             IconData statusIcon;
             String statusText;
 
@@ -245,13 +245,13 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: isDeleted 
-                      ? Colors.red.shade100 
+                  backgroundColor: isDeleted
+                      ? Colors.red.shade100
                       : statusColor.shade100,
                   child: Icon(
                     isDeleted ? Icons.delete : statusIcon,
-                    color: isDeleted 
-                        ? Colors.red.shade700 
+                    color: isDeleted
+                        ? Colors.red.shade700
                         : statusColor.shade700,
                   ),
                 ),
@@ -274,8 +274,8 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                     ),
                     Text(
                       DateFormat('MMM dd, yyyy').format(
-                        settlement['date'] is String 
-                            ? DateTime.parse(settlement['date']) 
+                        settlement['date'] is String
+                            ? DateTime.parse(settlement['date'])
                             : settlement['date'],
                       ),
                       style: TextStyle(
@@ -351,4 +351,3 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
     );
   }
 }
-

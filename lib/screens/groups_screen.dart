@@ -102,14 +102,14 @@ class _GroupsScreenState extends State<GroupsScreen> {
                 onPressed: _isCreating
                     ? null
                     : () {
-                        if (nameController.text.trim().isNotEmpty) {
-                          _createGroup(nameController.text.trim()).then((_) {
-                            if (mounted) {
-                              Navigator.pop(context);
-                            }
-                          });
-                        }
-                      },
+                  if (nameController.text.trim().isNotEmpty) {
+                    _createGroup(nameController.text.trim()).then((_) {
+                      if (mounted) {
+                        Navigator.pop(context);
+                      }
+                    });
+                  }
+                },
                 child: _isCreating
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Text('Create'),
@@ -121,7 +121,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
     );
   }
 
-  void _createGroup(String name) async {
+  Future<void> _createGroup(String name) async {
     // Store context references before any async operations
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final authService = Provider.of<AuthService>(context, listen: false);
@@ -197,8 +197,8 @@ class _GroupsScreenState extends State<GroupsScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : groups.isEmpty
-              ? _buildEmptyState()
-              : _buildGroupsList(),
+          ? _buildEmptyState()
+          : _buildGroupsList(),
       floatingActionButton: FloatingActionButton(
         onPressed: _showCreateGroupDialog,
         child: const Icon(Icons.add),
@@ -220,16 +220,16 @@ class _GroupsScreenState extends State<GroupsScreen> {
           Text(
             'No groups yet',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: Colors.grey.shade600,
-                ),
+              color: Colors.grey.shade600,
+            ),
           ),
           const SizedBox(height: 8),
           Text(
             'Create your first group to start splitting expenses',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey.shade500,
-                ),
+              color: Colors.grey.shade500,
+            ),
           ),
           const SizedBox(height: 32),
           ElevatedButton.icon(

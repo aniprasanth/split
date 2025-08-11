@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/group_model.dart';
-import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/local_storage_service.dart';
 import 'package:splitzy/utils/split_utils.dart';

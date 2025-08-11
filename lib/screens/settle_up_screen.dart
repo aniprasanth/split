@@ -32,51 +32,12 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
     super.dispose();
   }
 
-  // Calculate settlement amounts from expenses
-  Future<Map<String, dynamic>> _calculateSettlementsAsync(
-    List<ExpenseModel> expenses,
-    String currentUserId,
-    Map<String, GroupModel> groups,
-  ) async {
-    // Prepare plain maps for isolate
-    final expenseMaps = expenses.map((e) => e.toMap()).toList();
-    final balances = await compute(balancesFromExpenseMaps, expenseMaps);
-
-    // Gather member names (small map; fine on UI thread)
-    final Map<String, String> memberNames = {};
-    for (final g in groups.values) {
-      memberNames.addAll(g.memberNames);
-    }
-    for (final e in expenses) {
-      memberNames[e.payer] = e.payerName;
-    }
-
-    // Separate into you owe and owes you
-    final Map<String, double> youOwe = {};
-    final Map<String, double> owesYou = {};
-    balances.forEach((memberId, balance) {
-      if (memberId != currentUserId && balance != 0) {
-        if (balance > 0) {
-          owesYou[memberId] = balance;
-        } else {
-          youOwe[memberId] = -balance;
-        }
-      }
-    });
-
-    return {
-      'youOwe': youOwe,
-      'owesYou': owesYou,
-      'memberNames': memberNames,
-    };
-  }
-
   Future<Map<String, dynamic>> _calculateSettlementsWithHistoryAsync(
-    List<ExpenseModel> expenses,
-    List<SettlementModel> settlements,
-    String currentUserId,
-    Map<String, GroupModel> groups,
-  ) async {
+      List<ExpenseModel> expenses,
+      List<SettlementModel> settlements,
+      String currentUserId,
+      Map<String, GroupModel> groups,
+      ) async {
     // Prepare plain maps for isolate
     final expenseMaps = expenses.map((e) => e.toMap()).toList();
     final balances = await compute(balancesFromExpenseMaps, expenseMaps);
@@ -122,7 +83,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
       }
     }
 
-    // Separate into to give (you owe) and to get (owes you) - only unsettled amounts
+    // Separate into to get (you owe) and to give (owes you) - only unsettled amounts
     final Map<String, double> youOwe = {};
     final Map<String, double> owesYou = {};
     adjustedBalances.forEach((memberId, balance) {
@@ -153,8 +114,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'To Give'),
             Tab(text: 'To Get'),
+            Tab(text: 'To Give'),
           ],
         ),
       ),
@@ -313,17 +274,17 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        isOwesYou ? 'Total to get' : 'Total to give',
+                        isOwesYou ? 'Total to give' : 'Total to get',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: color.shade700,
-                            ),
+                          color: color.shade700,
+                        ),
                       ),
                       Text(
                         '₹${totalAmount.toStringAsFixed(2)}',
                         style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: color.shade800,
-                            ),
+                          fontWeight: FontWeight.bold,
+                          color: color.shade800,
+                        ),
                       ),
                     ],
                   ),
@@ -345,23 +306,23 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
             Text(
               'All settled up!',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.grey.shade600,
-                  ),
+                color: Colors.grey.shade600,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               isOwesYou ? 'Nobody owes you money' : 'You don\'t owe anyone money',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey.shade500,
-                  ),
+                color: Colors.grey.shade500,
+              ),
             ),
           ] else ...[
             ...settlements.entries.map((entry) => _buildSettlementCard(
-                  entry.key,
-                  memberNames[entry.key] ?? entry.key,
-                  entry.value,
-                  isOwesYou,
-                )),
+              entry.key,
+              memberNames[entry.key] ?? entry.key,
+              entry.value,
+              isOwesYou,
+            )),
           ],
         ],
       ),
@@ -399,14 +360,14 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                   Text(
                     name,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   Text(
                     isOwesYou ? 'to get' : 'to give',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey.shade600,
-                        ),
+                      color: Colors.grey.shade600,
+                    ),
                   ),
                 ],
               ),
@@ -417,9 +378,9 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                 Text(
                   '₹${amount.toStringAsFixed(2)}',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: color.shade700,
-                      ),
+                    fontWeight: FontWeight.bold,
+                    color: color.shade700,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Row(
@@ -439,7 +400,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                       ),
                     const SizedBox(width: 8),
                     TextButton.icon(
-                      onPressed: () => _markAsSettled(userId, name, amount),
+                      onPressed: () => _markAsSettled(userId, name, amount, isOwesYou),
                       icon: const Icon(Icons.check_circle, size: 18),
                       label: const Text('Mark as Settled'),
                     ),
@@ -467,7 +428,7 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
     );
   }
 
-  void _markAsSettled(String userId, String name, double amount) {
+  void _markAsSettled(String userId, String name, double amount, bool isOwesYou) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -481,32 +442,30 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
           ElevatedButton(
             onPressed: () async {
               Navigator.of(context).pop();
-              // We need to create a SettlementModel entry. Ask user for group if ambiguous.
               final auth = Provider.of<AuthService>(context, listen: false);
               final db = Provider.of<DatabaseService>(context, listen: false);
               final currentUser = auth.currentUser;
               if (currentUser == null) return;
 
-              // Load groups once to find a group containing both users. If none, let user pick.
+              // Load groups once to find a group containing both users
               GroupModel? selectedGroup;
               try {
                 final groupsSnapshot = await db.getUserGroups(currentUser.uid).first;
                 final candidate = groupsSnapshot.firstWhere(
-                  (g) => g.members.contains(currentUser.uid) && g.members.contains(userId),
+                      (g) => g.members.contains(currentUser.uid) && g.members.contains(userId),
                   orElse: () => groupsSnapshot.isNotEmpty
                       ? groupsSnapshot.first
                       : GroupModel(
-                          id: '',
-                          name: 'Personal',
-                          members: [],
-                          memberNames: {},
-                          createdBy: currentUser.uid,
-                        ),
+                    id: '',
+                    name: 'Personal',
+                    members: [],
+                    memberNames: {},
+                    createdBy: currentUser.uid,
+                  ),
                 );
                 if (candidate.id.isNotEmpty) {
                   selectedGroup = candidate;
                 } else {
-                  // Show simple picker dialog if needed
                   selectedGroup = await _pickGroup(groupsSnapshot);
                 }
               } catch (_) {}
@@ -514,20 +473,29 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
               if (!mounted) return;
               if (selectedGroup == null) return;
 
-              final youPay = true; // current user marks as paid to [name]
+              // Determine payment direction based on whether this is "owes you" or "you owe"
+              final currentUserPays = !isOwesYou; // If it's not "owes you", then current user pays
+
+              // Get current user display name (analyzer knows displayName is not null)
+              final currentUserName = currentUser.displayName.isNotEmpty
+                  ? currentUser.displayName
+                  : 'You';
+
               final settlement = SettlementModel.create(
-                fromUser: youPay ? currentUser.uid : userId,
-                fromUserName: youPay ? (currentUser.displayName) : name,
-                toUser: youPay ? userId : currentUser.uid,
-                toUserName: youPay ? name : (currentUser.displayName),
+                fromUser: currentUserPays ? currentUser.uid : userId,
+                fromUserName: currentUserPays ? currentUserName : name,
+                toUser: currentUserPays ? userId : currentUser.uid,
+                toUserName: currentUserPays ? name : currentUserName,
                 amount: amount,
-                groupId: selectedGroup!.id,
-                groupName: selectedGroup!.name,
+                groupId: selectedGroup.id,
+                groupName: selectedGroup.name,
                 paymentMethod: 'Manual',
               ).copyWith(status: SettlementStatus.completed);
 
               final success = await db.addSettlement(settlement);
               if (!mounted) return;
+
+              // Use context after mounted check
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(success
@@ -535,14 +503,6 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
                       : 'Failed to record settlement'),
                   backgroundColor: success ? Colors.green : Colors.red,
                   behavior: SnackBarBehavior.floating,
-                  action: success
-                      ? SnackBarAction(
-                          label: 'Undo',
-                          onPressed: () {
-                            // TODO: Implement undo functionality for settlements
-                          },
-                        )
-                      : null,
                 ),
               );
 

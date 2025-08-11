@@ -35,6 +35,15 @@ import 'end_to_end_test_suite.mocks.dart';
   ContactsService,
   LocalStorageService,
 ])
+
+// Mock Contact class for testing
+class MockContact {
+  final String displayName;
+  final List<String> phones;
+
+  MockContact({required this.displayName, required this.phones});
+}
+
 void main() {
   group('End-to-End Testing Suite', () {
     late MockAuthService mockAuthService;
@@ -58,7 +67,7 @@ void main() {
         SplitzyUser(
           uid: 'test-user-id',
           email: 'test@example.com',
-          displayName: 'Test User',
+          name: 'Test User', // Changed from displayName to name
         ),
       );
       when(mockAuthService.isLoading).thenReturn(false);
@@ -107,27 +116,27 @@ void main() {
       testWidgets('Complete login flow with Google Sign-In', (tester) async {
         // Test unauthenticated state
         when(mockAuthService.currentUser).thenReturn(null);
-        
+
         await tester.pumpWidget(createTestApp(const LoginScreen()));
-        
+
         // Verify login screen elements
         expect(find.text('Splitzy'), findsOneWidget);
         expect(find.text('Sign in with Google'), findsOneWidget);
-        
+
         // Test loading state
         when(mockAuthService.isSigningIn).thenReturn(true);
         await tester.pump();
-        
+
         expect(find.byType(CircularProgressIndicator), findsOneWidget);
-        
+
         // Test successful login
         when(mockAuthService.currentUser).thenReturn(
-          SplitzyUser(uid: 'test-user-id', email: 'test@example.com', displayName: 'Test User'),
+          SplitzyUser(uid: 'test-user-id', email: 'test@example.com', name: 'Test User'),
         );
         when(mockAuthService.isSigningIn).thenReturn(false);
-        
+
         await tester.pumpWidget(createTestApp(const HomeScreen()));
-        
+
         // Verify home screen elements
         expect(find.text('Splitzy'), findsOneWidget);
         expect(find.byType(BottomNavigationBar), findsOneWidget);
@@ -136,25 +145,25 @@ void main() {
       testWidgets('Login error handling', (tester) async {
         when(mockAuthService.signInWithGoogle()).thenThrow(Exception('Network error'));
         when(mockAuthService.errorMessage).thenReturn('Sign-in failed');
-        
+
         await tester.pumpWidget(createTestApp(const LoginScreen()));
-        
+
         // Tap sign in button
         await tester.tap(find.text('Sign in with Google'));
         await tester.pumpAndSettle();
-        
+
         // Verify error handling
         expect(find.text('Sign-in failed'), findsOneWidget);
       });
 
       testWidgets('Multiple rapid login attempts prevention', (tester) async {
         await tester.pumpWidget(createTestApp(const LoginScreen()));
-        
+
         // Rapid taps should be prevented
         await tester.tap(find.text('Sign in with Google'));
         await tester.tap(find.text('Sign in with Google'));
         await tester.tap(find.text('Sign in with Google'));
-        
+
         // Verify only one call was made
         verify(mockAuthService.signInWithGoogle()).called(1);
       });
@@ -163,24 +172,24 @@ void main() {
     group('2. Navigation and Screen Flow', () {
       testWidgets('Complete navigation flow through all screens', (tester) async {
         await tester.pumpWidget(createTestApp(const HomeScreen()));
-        
+
         // Test bottom navigation
         await tester.tap(find.byIcon(Icons.group));
         await tester.pumpAndSettle();
         expect(find.text('Groups'), findsOneWidget);
-        
+
         await tester.tap(find.byIcon(Icons.receipt));
         await tester.pumpAndSettle();
         expect(find.text('My Expenses'), findsOneWidget);
-        
+
         await tester.tap(find.byIcon(Icons.account_balance_wallet));
         await tester.pumpAndSettle();
         expect(find.text('Settle Up'), findsOneWidget);
-        
+
         await tester.tap(find.byIcon(Icons.history));
         await tester.pumpAndSettle();
         expect(find.text('Transaction History'), findsOneWidget);
-        
+
         await tester.tap(find.byIcon(Icons.settings));
         await tester.pumpAndSettle();
         expect(find.text('Settings'), findsOneWidget);
@@ -188,18 +197,18 @@ void main() {
 
       testWidgets('Back navigation and state preservation', (tester) async {
         await tester.pumpWidget(createTestApp(const GroupsScreen()));
-        
+
         // Navigate to add group
         await tester.tap(find.byIcon(Icons.add));
         await tester.pumpAndSettle();
-        
+
         // Fill form partially
         await tester.enterText(find.byType(TextFormField), 'Test Group');
-        
+
         // Navigate back
         await tester.tap(find.byIcon(Icons.arrow_back));
         await tester.pumpAndSettle();
-        
+
         // Verify back navigation worked
         expect(find.text('Groups'), findsOneWidget);
       });
@@ -207,44 +216,48 @@ void main() {
 
     group('3. Group Management - Complete Flow', () {
       testWidgets('Create, edit, and delete group flow', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const GroupsScreen()));
-        
+
         // Create group
         await tester.tap(find.byIcon(Icons.add));
         await tester.pumpAndSettle();
-        
+
         await tester.enterText(find.byType(TextFormField), 'Test Group');
         await tester.tap(find.text('Create'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.createGroup(any)).called(1);
-        
+
         // Mock group creation success
         when(mockDatabaseService.getUserGroups(any))
             .thenAnswer((_) => Stream.value([
-                  GroupModel(
-                    id: 'test-group-id',
-                    name: 'Test Group',
-                    members: ['test-user-id'],
-                    memberNames: {'test-user-id': 'Test User'},
-                    createdBy: 'test-user-id',
-                  ),
-                ]));
-        
+          GroupModel(
+            id: 'test-group-id',
+            name: 'Test Group',
+            members: ['test-user-id'],
+            memberNames: {'test-user-id': 'Test User'},
+            createdBy: 'test-user-id',
+            createdAt: DateTime.now(),
+          ),
+        ]));
+
         await tester.pumpAndSettle();
-        
+
         // Edit group
         await tester.tap(find.byIcon(Icons.more_vert));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Edit'));
         await tester.pumpAndSettle();
-        
+
         await tester.enterText(find.byType(TextFormField), 'Updated Group');
         await tester.tap(find.text('Update'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.updateGroup(any)).called(1);
-        
+
         // Delete group
         await tester.tap(find.byIcon(Icons.more_vert));
         await tester.pumpAndSettle();
@@ -252,33 +265,36 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Delete'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.deleteGroup(any)).called(1);
       });
 
       testWidgets('Group validation and error handling', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const GroupsScreen()));
-        
+
         // Test empty group name
         await tester.tap(find.byIcon(Icons.add));
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.text('Create'));
         await tester.pumpAndSettle();
-        
+
         // Should show validation error
         expect(find.text('Please enter a group name'), findsOneWidget);
-        
+
         // Test network error
         when(mockDatabaseService.createGroup(any))
             .thenAnswer((_) async => false);
         when(mockDatabaseService.errorMessage)
             .thenReturn('Network error');
-        
+
         await tester.enterText(find.byType(TextFormField), 'Test Group');
         await tester.tap(find.text('Create'));
         await tester.pumpAndSettle();
-        
+
         expect(find.text('Network error'), findsOneWidget);
       });
     });
@@ -294,77 +310,84 @@ void main() {
             'other-user-id': 'Other User',
           },
           createdBy: 'test-user-id',
+          createdAt: DateTime.now(),
         );
-        
+
         await tester.pumpWidget(createTestApp(AddExpenseScreen(group: testGroup)));
-        
+
         // Fill expense form
         await tester.enterText(find.byType(TextFormField).first, 'Test Expense');
         await tester.enterText(find.byType(TextFormField).last, '100.00');
-        
+
         // Select payer and members
         await tester.tap(find.text('Test User')); // Select payer
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.text('Other User')); // Select member for split
         await tester.pumpAndSettle();
-        
+
         // Save expense
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.addExpense(any)).called(1);
       });
 
       testWidgets('Non-group expense creation with member addition', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Verify Add Person button is visible
         expect(find.text('Add Person'), findsOneWidget);
-        
+
         // Add member manually
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
-        
+
         await tester.enterText(find.byType(TextField), 'John Doe');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
-        
+
         // Verify member was added
         expect(find.text('John Doe'), findsOneWidget);
-        
+
         // Fill expense details
         await tester.enterText(find.byType(TextFormField).first, 'Non-Group Expense');
         await tester.enterText(find.byType(TextFormField).last, '150.00');
-        
+
         // Save expense
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.addExpense(any)).called(1);
       });
 
       testWidgets('Contact integration for member addition', (tester) async {
         when(mockContactsService.contacts).thenReturn([
-          Contact(displayName: 'Jane Doe', phones: []),
-          Contact(displayName: 'Bob Smith', phones: []),
+          MockContact(displayName: 'Jane Doe', phones: []),
+          MockContact(displayName: 'Bob Smith', phones: []),
         ]);
-        
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
-        
+
         // Tap on contact
         await tester.tap(find.text('Jane Doe'));
         await tester.pumpAndSettle();
-        
+
         // Verify contact was added
         expect(find.text('Jane Doe'), findsOneWidget);
       });
 
       testWidgets('Expense editing functionality', (tester) async {
-        final testExpense = ExpenseModel.create(
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -372,33 +395,36 @@ void main() {
           description: 'Original Description',
           split: {'test-user-id': 100.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
+
         final testGroup = GroupModel(
           id: 'test-group-id',
           name: 'Test Group',
           members: ['test-user-id'],
           memberNames: {'test-user-id': 'Test User'},
           createdBy: 'test-user-id',
+          createdAt: DateTime.now(),
         );
-        
+
         await tester.pumpWidget(createTestApp(EditExpenseScreen(
           expense: testExpense,
           group: testGroup,
         )));
-        
+
         // Edit expense
         await tester.enterText(find.byType(TextFormField).first, 'Updated Description');
         await tester.enterText(find.byType(TextFormField).last, '200.00');
-        
+
         await tester.tap(find.text('Save Changes'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.updateExpense(any)).called(1);
       });
 
       testWidgets('Expense deletion with confirmation', (tester) async {
-        final testExpense = ExpenseModel.create(
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -406,24 +432,26 @@ void main() {
           description: 'Test Expense',
           split: {'test-user-id': 100.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
+
         final testGroup = GroupModel(
           id: 'test-group-id',
           name: 'Test Group',
           members: ['test-user-id'],
           memberNames: {'test-user-id': 'Test User'},
           createdBy: 'test-user-id',
+          createdAt: DateTime.now(),
         );
-        
+
         when(mockDatabaseService.getGroupExpenses(any))
             .thenAnswer((_) => Stream.value([testExpense]));
         when(mockDatabaseService.getSettlements(any))
             .thenAnswer((_) => Stream.value([]));
-        
+
         await tester.pumpWidget(createTestApp(GroupDetailScreen(group: testGroup)));
         await tester.pumpAndSettle();
-        
+
         // Delete expense
         await tester.tap(find.byIcon(Icons.more_vert));
         await tester.pumpAndSettle();
@@ -431,14 +459,15 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Delete'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.deleteExpense(any, any)).called(1);
       });
     });
 
     group('5. Settle Up Screen - Real-time Updates', () {
       testWidgets('Dynamic settlement display and marking as settled', (tester) async {
-        final testExpense = ExpenseModel.create(
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -446,47 +475,50 @@ void main() {
           description: 'Test Expense',
           split: {'test-user-id': 50.0, 'other-user-id': 50.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
+
         when(mockDatabaseService.getAllExpenses())
             .thenAnswer((_) => Stream.value([testExpense]));
         when(mockDatabaseService.getUserGroups(any))
             .thenAnswer((_) => Stream.value([
-                  GroupModel(
-                    id: 'test-group-id',
-                    name: 'Test Group',
-                    members: ['test-user-id', 'other-user-id'],
-                    memberNames: {
-                      'test-user-id': 'Test User',
-                      'other-user-id': 'Other User',
-                    },
-                    createdBy: 'test-user-id',
-                  ),
-                ]));
+          GroupModel(
+            id: 'test-group-id',
+            name: 'Test Group',
+            members: ['test-user-id', 'other-user-id'],
+            memberNames: {
+              'test-user-id': 'Test User',
+              'other-user-id': 'Other User',
+            },
+            createdBy: 'test-user-id',
+            createdAt: DateTime.now(),
+          ),
+        ]));
         when(mockDatabaseService.getAllSettlementsForUser(any))
             .thenAnswer((_) => Stream.value([]));
-        
+
         await tester.pumpWidget(createTestApp(const SettleUpScreen()));
         await tester.pumpAndSettle();
-        
+
         // Verify tabs show correct labels
         expect(find.text('To Give'), findsOneWidget);
         expect(find.text('To Get'), findsOneWidget);
-        
+
         // Verify unsettled amount is shown
         expect(find.text('₹50.00'), findsOneWidget);
-        
+
         // Mark as settled
         await tester.tap(find.text('Mark as Settled'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Mark Settled'));
         await tester.pumpAndSettle();
-        
+
         verify(mockDatabaseService.addSettlement(any)).called(1);
       });
 
       testWidgets('Settlement with completed transactions filtered out', (tester) async {
-        final testExpense = ExpenseModel.create(
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -494,9 +526,11 @@ void main() {
           description: 'Test Expense',
           split: {'test-user-id': 50.0, 'other-user-id': 50.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
-        final testSettlement = SettlementModel.create(
+
+        final testSettlement = SettlementModel(
+          id: 'test-settlement-id',
           fromUser: 'test-user-id',
           fromUserName: 'Test User',
           toUser: 'other-user-id',
@@ -505,29 +539,32 @@ void main() {
           groupId: 'test-group-id',
           groupName: 'Test Group',
           paymentMethod: 'Manual',
-        ).copyWith(status: SettlementStatus.completed);
-        
+          status: SettlementStatus.completed,
+          createdAt: DateTime.now(),
+        );
+
         when(mockDatabaseService.getAllExpenses())
             .thenAnswer((_) => Stream.value([testExpense]));
         when(mockDatabaseService.getUserGroups(any))
             .thenAnswer((_) => Stream.value([
-                  GroupModel(
-                    id: 'test-group-id',
-                    name: 'Test Group',
-                    members: ['test-user-id', 'other-user-id'],
-                    memberNames: {
-                      'test-user-id': 'Test User',
-                      'other-user-id': 'Other User',
-                    },
-                    createdBy: 'test-user-id',
-                  ),
-                ]));
+          GroupModel(
+            id: 'test-group-id',
+            name: 'Test Group',
+            members: ['test-user-id', 'other-user-id'],
+            memberNames: {
+              'test-user-id': 'Test User',
+              'other-user-id': 'Other User',
+            },
+            createdBy: 'test-user-id',
+            createdAt: DateTime.now(),
+          ),
+        ]));
         when(mockDatabaseService.getAllSettlementsForUser(any))
             .thenAnswer((_) => Stream.value([testSettlement]));
-        
+
         await tester.pumpWidget(createTestApp(const SettleUpScreen()));
         await tester.pumpAndSettle();
-        
+
         // Verify only remaining unsettled amount is shown (50 - 25 = 25)
         expect(find.text('₹25.00'), findsOneWidget);
       });
@@ -535,7 +572,8 @@ void main() {
 
     group('6. Data Integrity and Consistency', () {
       testWidgets('Data consistency across all screens', (tester) async {
-        final testExpense = ExpenseModel.create(
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -543,8 +581,9 @@ void main() {
           description: 'Test Expense',
           split: {'test-user-id': 50.0, 'other-user-id': 50.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
+
         final testGroup = GroupModel(
           id: 'test-group-id',
           name: 'Test Group',
@@ -554,8 +593,9 @@ void main() {
             'other-user-id': 'Other User',
           },
           createdBy: 'test-user-id',
+          createdAt: DateTime.now(),
         );
-        
+
         // Mock data for all screens
         when(mockDatabaseService.getUserGroups(any))
             .thenAnswer((_) => Stream.value([testGroup]));
@@ -569,17 +609,17 @@ void main() {
             .thenAnswer((_) => Stream.value([]));
         when(mockDatabaseService.getTransactionHistory(any))
             .thenAnswer((_) => Stream.value([testExpense]));
-        
+
         // Test Groups Screen
         await tester.pumpWidget(createTestApp(const GroupsScreen()));
         await tester.pumpAndSettle();
         expect(find.text('Test Group'), findsOneWidget);
-        
+
         // Test My Expenses Screen
         await tester.pumpWidget(createTestApp(const MyExpensesScreen()));
         await tester.pumpAndSettle();
         expect(find.text('Test Expense'), findsOneWidget);
-        
+
         // Test History Screen
         await tester.pumpWidget(createTestApp(const HistoryScreen()));
         await tester.pumpAndSettle();
@@ -587,7 +627,8 @@ void main() {
       });
 
       testWidgets('Real-time data synchronization', (tester) async {
-        final testExpense = ExpenseModel.create(
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -595,23 +636,24 @@ void main() {
           description: 'Test Expense',
           split: {'test-user-id': 100.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
+
         // Start with empty data
         when(mockDatabaseService.getAllExpenses())
             .thenAnswer((_) => Stream.value([]));
-        
+
         await tester.pumpWidget(createTestApp(const MyExpensesScreen()));
         await tester.pumpAndSettle();
-        
+
         expect(find.text('No expenses found'), findsOneWidget);
-        
+
         // Update with new data
         when(mockDatabaseService.getAllExpenses())
             .thenAnswer((_) => Stream.value([testExpense]));
-        
+
         await tester.pumpAndSettle();
-        
+
         expect(find.text('Test Expense'), findsOneWidget);
       });
     });
@@ -622,95 +664,108 @@ void main() {
             .thenAnswer((_) async => false);
         when(mockDatabaseService.errorMessage)
             .thenReturn('Network error occurred');
-        
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Fill form and try to save
         await tester.enterText(find.byType(TextFormField).first, 'Test Expense');
         await tester.enterText(find.byType(TextFormField).last, '100.00');
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'John Doe');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         expect(find.text('Failed to add expense. Please try again.'), findsOneWidget);
       });
 
       testWidgets('Permission denied handling', (tester) async {
         when(mockContactsService.hasPermission).thenReturn(false);
         when(mockContactsService.requestPermission()).thenAnswer((_) async => false);
-        
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.text('Grant contacts permission'));
         await tester.pumpAndSettle();
-        
+
         expect(find.text('Permission denied'), findsOneWidget);
       });
 
       testWidgets('Large amount handling', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Test very large amount
         await tester.enterText(find.byType(TextFormField).last, '999999.99');
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'John Doe');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         // Should handle large amount without issues
         verify(mockDatabaseService.addExpense(any)).called(1);
       });
 
       testWidgets('Special characters in input fields', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Test special characters
         await tester.enterText(find.byType(TextFormField).first, 'Test Expense with émojis 🎉 and symbols @#$%');
         await tester.enterText(find.byType(TextFormField).last, '100.00');
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'José María');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         // Should handle special characters without issues
         verify(mockDatabaseService.addExpense(any)).called(1);
       });
 
       testWidgets('Empty and invalid input validation', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Try to save with empty fields
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         // Should show validation errors
         expect(find.text('Please enter a description'), findsOneWidget);
         expect(find.text('Please enter an amount'), findsOneWidget);
-        
+
         // Test invalid amount
         await tester.enterText(find.byType(TextFormField).last, 'invalid');
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         expect(find.text('Please enter a valid amount'), findsOneWidget);
       });
     });
@@ -720,59 +775,65 @@ void main() {
         // Simulate slow network
         when(mockDatabaseService.addExpense(any))
             .thenAnswer((_) async {
-              await Future.delayed(const Duration(seconds: 2));
-              return true;
-            });
-        
+          await Future.delayed(const Duration(seconds: 2));
+          return true;
+        });
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Fill form
         await tester.enterText(find.byType(TextFormField).first, 'Test Expense');
         await tester.enterText(find.byType(TextFormField).last, '100.00');
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'John Doe');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
-        
+
         // Tap save and verify loading state
         await tester.tap(find.text('Add Expense'));
         await tester.pump();
-        
+
         // Should show loading state
         expect(find.text('Adding...'), findsOneWidget);
         expect(find.byType(CircularProgressIndicator), findsOneWidget);
-        
+
         // UI should remain responsive
         expect(find.byType(Scaffold), findsOneWidget);
       });
 
       testWidgets('Multiple rapid interactions prevention', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Fill form
         await tester.enterText(find.byType(TextFormField).first, 'Test Expense');
         await tester.enterText(find.byType(TextFormField).last, '100.00');
-        
+
         await tester.tap(find.text('Add Person'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField), 'John Doe');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.pumpAndSettle();
-        
+
         // Multiple rapid taps
         await tester.tap(find.text('Add Expense'));
         await tester.tap(find.text('Add Expense'));
         await tester.tap(find.text('Add Expense'));
-        
+
         // Should only call once
         verify(mockDatabaseService.addExpense(any)).called(1);
       });
 
       testWidgets('Large data set handling', (tester) async {
         // Create large dataset
-        final largeExpenseList = List.generate(100, (index) => ExpenseModel.create(
+        final largeExpenseList = List.generate(100, (index) => ExpenseModel(
+          id: 'test-expense-id-$index',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -780,14 +841,15 @@ void main() {
           description: 'Test Expense $index',
           split: {'test-user-id': 100.0 + index},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         ));
-        
+
         when(mockDatabaseService.getAllExpenses())
             .thenAnswer((_) => Stream.value(largeExpenseList));
-        
+
         await tester.pumpWidget(createTestApp(const MyExpensesScreen()));
         await tester.pumpAndSettle();
-        
+
         // Should handle large dataset without freezing
         expect(find.byType(ListView), findsOneWidget);
         expect(find.text('Test Expense 0'), findsOneWidget);
@@ -797,8 +859,11 @@ void main() {
 
     group('9. Accessibility and UI Standards', () {
       testWidgets('Semantic labels and accessibility', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Verify semantic labels
         expect(find.bySemanticsLabel('Description'), findsOneWidget);
         expect(find.bySemanticsLabel('Amount'), findsOneWidget);
@@ -807,22 +872,25 @@ void main() {
 
       testWidgets('Text formatting and consistency', (tester) async {
         await tester.pumpWidget(createTestApp(const SettleUpScreen()));
-        
+
         // Verify consistent text formatting
         expect(find.text('To Give'), findsOneWidget);
         expect(find.text('To Get'), findsOneWidget);
-        
+
         // Verify currency formatting
         expect(find.text('₹'), findsOneWidget);
       });
 
       testWidgets('Button states and feedback', (tester) async {
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
-        
+
         // Verify button states
         final addButton = find.text('Add Expense');
         expect(addButton, findsOneWidget);
-        
+
         // Button should be enabled initially
         expect(tester.widget<ElevatedButton>(addButton).onPressed, isNotNull);
       });
@@ -833,36 +901,39 @@ void main() {
         // Start with login
         when(mockAuthService.currentUser).thenReturn(null);
         await tester.pumpWidget(createTestApp(const LoginScreen()));
-        
+
         // Login
         when(mockAuthService.currentUser).thenReturn(
-          SplitzyUser(uid: 'test-user-id', email: 'test@example.com', displayName: 'Test User'),
+          SplitzyUser(uid: 'test-user-id', email: 'test@example.com', name: 'Test User'),
         );
         await tester.pumpWidget(createTestApp(const HomeScreen()));
-        
+
         // Create group
         await tester.tap(find.byIcon(Icons.group));
         await tester.pumpAndSettle();
-        
+
+        when(mockDatabaseService.getUserGroups(any))
+            .thenAnswer((_) => Stream.value([]));
+
         await tester.tap(find.byIcon(Icons.add));
         await tester.pumpAndSettle();
-        
+
         await tester.enterText(find.byType(TextFormField), 'Test Group');
         await tester.tap(find.text('Create'));
         await tester.pumpAndSettle();
-        
+
         // Create expense
         await tester.tap(find.byIcon(Icons.receipt));
         await tester.pumpAndSettle();
-        
+
         await tester.tap(find.byIcon(Icons.add));
         await tester.pumpAndSettle();
-        
+
         await tester.enterText(find.byType(TextFormField).first, 'Test Expense');
         await tester.enterText(find.byType(TextFormField).last, '100.00');
         await tester.tap(find.text('Add Expense'));
         await tester.pumpAndSettle();
-        
+
         // Verify complete flow
         verify(mockDatabaseService.createGroup(any)).called(1);
         verify(mockDatabaseService.addExpense(any)).called(1);
@@ -875,9 +946,11 @@ void main() {
           members: ['test-user-id'],
           memberNames: {'test-user-id': 'Test User'},
           createdBy: 'test-user-id',
+          createdAt: DateTime.now(),
         );
-        
-        final testExpense = ExpenseModel.create(
+
+        final testExpense = ExpenseModel(
+          id: 'test-expense-id',
           groupId: 'test-group-id',
           payer: 'test-user-id',
           payerName: 'Test User',
@@ -885,8 +958,9 @@ void main() {
           description: 'Test Expense',
           split: {'test-user-id': 100.0},
           date: DateTime.now(),
+          createdAt: DateTime.now(),
         );
-        
+
         // Mock data for all screens
         when(mockDatabaseService.getUserGroups(any))
             .thenAnswer((_) => Stream.value([testGroup]));
@@ -896,28 +970,20 @@ void main() {
             .thenAnswer((_) => Stream.value([testExpense]));
         when(mockDatabaseService.getMyExpenses(any))
             .thenAnswer((_) => Stream.value([testExpense]));
-        
+
         // Test data consistency across screens
         await tester.pumpWidget(createTestApp(const GroupsScreen()));
         await tester.pumpAndSettle();
         expect(find.text('Test Group'), findsOneWidget);
-        
+
         await tester.pumpWidget(createTestApp(const MyExpensesScreen()));
         await tester.pumpAndSettle();
         expect(find.text('Test Expense'), findsOneWidget);
-        
+
         await tester.pumpWidget(createTestApp(GroupDetailScreen(group: testGroup)));
         await tester.pumpAndSettle();
         expect(find.text('Test Expense'), findsOneWidget);
       });
     });
   });
-}
-
-// Mock Contact class for testing
-class Contact {
-  final String displayName;
-  final List<String> phones;
-
-  Contact({required this.displayName, required this.phones});
 }
