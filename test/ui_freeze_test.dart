@@ -9,13 +9,20 @@ import 'package:splitzy/screens/add_expense_screen.dart';
 import 'package:splitzy/screens/group_detail_screen.dart';
 import 'package:splitzy/models/group_model.dart';
 import 'package:splitzy/models/expense_model.dart';
+import 'package:splitzy/models/user_model.dart';
+import 'package:splitzy/models/settlement_model.dart';
+import 'dart:async';
 
 // Mock services for testing
 class MockAuthService extends ChangeNotifier implements AuthService {
   bool _isLoading = false;
   bool _isSigningIn = false;
   String? _errorMessage;
-  dynamic _currentUser = {'uid': 'test_user', 'displayName': 'Test User'};
+  SplitzyUser? _currentUser = SplitzyUser(
+    uid: 'test_user',
+    email: 'test@example.com',
+    name: 'Test User',
+  );
 
   @override
   bool get isLoading => _isLoading;
@@ -24,10 +31,10 @@ class MockAuthService extends ChangeNotifier implements AuthService {
   @override
   String? get errorMessage => _errorMessage;
   @override
-  dynamic get currentUser => _currentUser;
+  SplitzyUser? get currentUser => _currentUser;
 
   @override
-  Future<UserCredential?> signInWithGoogle() async {
+  Future<String> signInWithGoogle() async {
     _isSigningIn = true;
     _isLoading = true;
     notifyListeners();
@@ -38,7 +45,47 @@ class MockAuthService extends ChangeNotifier implements AuthService {
     _isSigningIn = false;
     _isLoading = false;
     notifyListeners();
-    return null; // Simulate success
+    return 'success';
+  }
+
+  @override
+  Future<bool> signInWithEmailAndPassword(String email, String password) async {
+    return true;
+  }
+
+  @override
+  Future<bool> createUserWithEmailAndPassword(String email, String password) async {
+    return true;
+  }
+
+  @override
+  Future<bool> signOut() async {
+    return true;
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    // Implementation
+  }
+
+  @override
+  Future<void> updateUserProfile({String? name, String? photoUrl, String? phoneNumber}) async {
+    // Implementation
+  }
+
+  @override
+  Future<String?> getAccessToken() async {
+    return null;
+  }
+
+  @override
+  Future<SplitzyUser?> getUserById(String userId) async {
+    return null;
+  }
+
+  @override
+  Future<List<SplitzyUser>> searchUsers(String query) async {
+    return [];
   }
 
   @override
@@ -51,7 +98,8 @@ class MockAuthService extends ChangeNotifier implements AuthService {
 class MockDatabaseService extends ChangeNotifier implements DatabaseService {
   bool _isLoading = false;
   String? _errorMessage;
-  List<GroupModel> _groups = [];
+  final List<GroupModel> _groups = [];
+  final List<ExpenseModel> _expenses = [];
 
   @override
   bool get isLoading => _isLoading;
@@ -102,20 +150,92 @@ class MockDatabaseService extends ChangeNotifier implements DatabaseService {
   }
 
   @override
+  Stream<List<GroupModel>> getUserGroups(String userId) {
+    return Stream.value(_groups);
+  }
+
+  @override
+  Stream<List<ExpenseModel>> getGroupExpenses(String groupId) {
+    return Stream.value(_expenses.where((e) => e.groupId == groupId).toList());
+  }
+
+  @override
+  Stream<List<SettlementModel>> getGroupSettlements(String groupId) {
+    return Stream.value([]);
+  }
+
+  @override
+  Future<GroupModel?> getGroup(String groupId) async {
+    return _groups.firstWhere((g) => g.id == groupId);
+  }
+
+  @override
+  Future<bool> addMemberToGroup(String groupId, String memberId, String memberName) async {
+    return true;
+  }
+
+  @override
+  Future<bool> removeMemberFromGroup(String groupId, String memberId) async {
+    return true;
+  }
+
+  @override
   Future<bool> addExpense(ExpenseModel expense) async {
     _isLoading = true;
     notifyListeners();
     
     await Future.delayed(const Duration(milliseconds: 100));
     
+    _expenses.add(expense);
     _isLoading = false;
     notifyListeners();
     return true;
   }
 
   @override
-  Stream<List<GroupModel>> getUserGroups(String userId) {
-    return Stream.value(_groups);
+  Future<bool> updateExpense(ExpenseModel expense) async {
+    return true;
+  }
+
+  @override
+  Future<bool> deleteExpense(String expenseId, [String? groupId]) async {
+    return true;
+  }
+
+  @override
+  Stream<List<ExpenseModel>> getAllExpenses() {
+    return Stream.value(_expenses);
+  }
+
+  @override
+  Future<bool> addSettlement(SettlementModel settlement) async {
+    return true;
+  }
+
+  @override
+  Stream<List<SettlementModel>> getAllSettlementsForUser(String userId) {
+    return Stream.value([]);
+  }
+
+  @override
+  Stream<List<Map<String, dynamic>>> getTransactionHistory(String userId) {
+    return Stream.value([]);
+  }
+
+  @override
+  Future<Map<String, double>> calculateBalances(String groupId) async {
+    return {};
+  }
+
+  @override
+  Future<List<SettlementModel>> calculateSettlements(String groupId) async {
+    return [];
+  }
+
+  @override
+  void clearError() {
+    _errorMessage = null;
+    notifyListeners();
   }
 }
 
@@ -301,3 +421,4 @@ void main() {
     });
   });
 }
+

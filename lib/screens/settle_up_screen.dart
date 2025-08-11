@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:splitzy/services/database_service.dart';
+import 'package:splitzy/services/optimized_data_service.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/models/expense_model.dart';
 import 'package:splitzy/models/group_model.dart';
@@ -30,6 +31,32 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Stream<Map<String, dynamic>> _getOptimizedSettlementData(
+    String currentUserId,
+    OptimizedDataService optimizedDataService,
+  ) {
+    return Rx.combineLatest3(
+      optimizedDataService.expensesStream,
+      optimizedDataService.getUserGroups(currentUserId),
+      optimizedDataService.getUserSettlements(currentUserId),
+      (List<ExpenseModel> expenses, List<GroupModel> groups, List<SettlementModel> settlements) async {
+        // Convert groups to map for efficient lookup
+        final groupsMap = <String, GroupModel>{};
+        for (final group in groups) {
+          groupsMap[group.id] = group;
+        }
+
+        // Use optimized calculation with caching
+        return await optimizedDataService.calculateSettlementsOptimized(
+          currentUserId,
+          expenses,
+          settlements,
+          groupsMap,
+        );
+      },
+    ).switchMap((future) => Stream.fromFuture(future));
   }
 
   Future<Map<String, dynamic>> _calculateSettlementsWithHistoryAsync(
@@ -135,104 +162,39 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
             );
           }
 
-          return StreamBuilder<List<ExpenseModel>>(
-            stream: dbService.getAllExpenses(),
-            builder: (context, expenseSnapshot) {
-              if (expenseSnapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              if (expenseSnapshot.hasError) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-                      const SizedBox(height: 16),
-                      const Text('Error loading expenses'),
-                    ],
-                  ),
-                );
-              }
-
-              return StreamBuilder<List<GroupModel>>(
-                stream: dbService.getUserGroups(currentUser.uid),
-                builder: (context, groupSnapshot) {
-                  if (groupSnapshot.connectionState == ConnectionState.waiting) {
+          return Consumer<OptimizedDataService>(
+            builder: (context, optimizedDataService, child) {
+              return StreamBuilder<Map<String, dynamic>>(
+                stream: _getOptimizedSettlementData(currentUser.uid, optimizedDataService),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final expenses = expenseSnapshot.data ?? [];
-                  final groups = <String, GroupModel>{};
-                  for (final group in groupSnapshot.data ?? []) {
-                    groups[group.id] = group;
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
+                          const SizedBox(height: 16),
+                          const Text('Error loading settlement data'),
+                        ],
+                      ),
+                    );
                   }
 
-                  // Get settlements for the current user
-                  return StreamBuilder<List<SettlementModel>>(
-                    stream: dbService.getAllSettlementsForUser(currentUser.uid),
-                    builder: (context, settlementsSnapshot) {
-                      if (settlementsSnapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
+                  final data = snapshot.data!;
+                  final youOweMap = data['youOwe'] as Map<String, double>;
+                  final owesYouMap = data['owesYou'] as Map<String, double>;
+                  final memberNames = data['memberNames'] as Map<String, String>;
 
-                      if (settlementsSnapshot.hasError) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.error_outline, size: 64, color: Colors.red.shade400),
-                              const SizedBox(height: 16),
-                              const Text('Error loading settlements'),
-                            ],
-                          ),
-                        );
-                      }
-
-                      final settlements = settlementsSnapshot.data ?? [];
-
-                      // Use FutureBuilder for async calculations with settlements
-                      return FutureBuilder<Map<String, dynamic>>(
-                        future: _calculateSettlementsWithHistoryAsync(
-                          expenses,
-                          settlements,
-                          currentUser.uid,
-                          groups,
-                        ),
-                        builder: (context, calcSnapshot) {
-                          if (calcSnapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-
-                          if (calcSnapshot.hasError) {
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                      Icons.error_outline, size: 64, color: Colors.red.shade400),
-                                  const SizedBox(height: 16),
-                                  const Text('Error calculating settlements'),
-                                ],
-                              ),
-                            );
-                          }
-
-                          final calcResult = calcSnapshot.data!;
-                          final youOweMap = calcResult['youOwe'] as Map<String, double>;
-                          final owesYouMap = calcResult['owesYou'] as Map<String, double>;
-                          final memberNames = calcResult['memberNames'] as Map<String, String>;
-
-                          return TabBarView(
-                            controller: _tabController,
-                            children: [
-                              _buildSettlementTab(youOweMap, memberNames, false),
-                              _buildSettlementTab(owesYouMap, memberNames, true),
-                            ],
-                          );
-                        },
-                      );
-                    },
+                  return TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildSettlementTab(owesYouMap, memberNames, true),  // "To Get" - people who owe you
+                      _buildSettlementTab(youOweMap, memberNames, false),  // "To Give" - people you owe
+                    ],
                   );
                 },
               );
@@ -451,24 +413,49 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
               GroupModel? selectedGroup;
               try {
                 final groupsSnapshot = await db.getUserGroups(currentUser.uid).first;
-                final candidate = groupsSnapshot.firstWhere(
-                      (g) => g.members.contains(currentUser.uid) && g.members.contains(userId),
-                  orElse: () => groupsSnapshot.isNotEmpty
-                      ? groupsSnapshot.first
-                      : GroupModel(
-                    id: '',
-                    name: 'Personal',
-                    members: [],
-                    memberNames: {},
-                    createdBy: currentUser.uid,
-                  ),
-                );
-                if (candidate.id.isNotEmpty) {
-                  selectedGroup = candidate;
-                } else {
+                
+                // First try to find a group containing both users
+                final sharedGroup = groupsSnapshot.where(
+                  (g) => g.members.contains(currentUser.uid) && g.members.contains(userId)
+                ).firstOrNull;
+                
+                if (sharedGroup != null) {
+                  selectedGroup = sharedGroup;
+                } else if (groupsSnapshot.isNotEmpty) {
+                  // If no shared group, let user pick from their groups
                   selectedGroup = await _pickGroup(groupsSnapshot);
+                } else {
+                  // If no groups exist, create a default personal group and save it
+                  selectedGroup = GroupModel(
+                    id: 'personal_${currentUser.uid}',
+                    name: 'Personal',
+                    members: [currentUser.uid, userId],
+                    memberNames: {
+                      currentUser.uid: currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You',
+                      userId: name,
+                    },
+                    createdBy: currentUser.uid,
+                  );
+                  
+                  // Save the personal group to database
+                  await db.createGroup(selectedGroup);
                 }
-              } catch (_) {}
+              } catch (e) {
+                // If there's an error loading groups, create a default personal group and save it
+                selectedGroup = GroupModel(
+                  id: 'personal_${currentUser.uid}',
+                  name: 'Personal',
+                  members: [currentUser.uid, userId],
+                  memberNames: {
+                    currentUser.uid: currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You',
+                    userId: name,
+                  },
+                  createdBy: currentUser.uid,
+                );
+                
+                // Save the personal group to database
+                await db.createGroup(selectedGroup);
+              }
 
               if (!mounted) return;
               if (selectedGroup == null) return;
@@ -496,7 +483,8 @@ class _SettleUpScreenState extends State<SettleUpScreen> with SingleTickerProvid
               if (!mounted) return;
 
               // Use context after mounted check
-              ScaffoldMessenger.of(context).showSnackBar(
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              scaffoldMessenger.showSnackBar(
                 SnackBar(
                   content: Text(success
                       ? '₹${amount.toStringAsFixed(2)} marked as settled with $name'

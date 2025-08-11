@@ -1,303 +1,734 @@
 (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF'
-diff --git a/UI_UX_IMPROVEMENTS.md b/UI_UX_IMPROVEMENTS.md
---- a/UI_UX_IMPROVEMENTS.md
-+++ b/UI_UX_IMPROVEMENTS.md
-@@ -0,0 +1,296 @@
-+# UI/UX Improvements - Add Expense Simplification & Transaction Deletion
+diff --git a/test/ui_freeze_test.dart b/test/ui_freeze_test.dart
+--- a/test/ui_freeze_test.dart
++++ b/test/ui_freeze_test.dart
+@@ -1,303 +1,424 @@
+-import 'package:flutter/material.dart';
+-import 'package:flutter_test/flutter_test.dart';
+-import 'package:provider/provider.dart';
+-import 'package:splitzy/services/auth_service.dart';
+-import 'package:splitzy/services/database_service.dart';
+-import 'package:splitzy/screens/login_screen.dart';
+-import 'package:splitzy/screens/groups_screen.dart';
+-import 'package:splitzy/screens/add_expense_screen.dart';
+-import 'package:splitzy/screens/group_detail_screen.dart';
+-import 'package:splitzy/models/group_model.dart';
+-import 'package:splitzy/models/expense_model.dart';
+-
+-// Mock services for testing
+-class MockAuthService extends ChangeNotifier implements AuthService {
+-  bool _isLoading = false;
+-  bool _isSigningIn = false;
+-  String? _errorMessage;
+-  dynamic _currentUser = {'uid': 'test_user', 'displayName': 'Test User'};
+-
+-  @override
+-  bool get isLoading => _isLoading;
+-  @override
+-  bool get isSigningIn => _isSigningIn;
+-  @override
+-  String? get errorMessage => _errorMessage;
+-  @override
+-  dynamic get currentUser => _currentUser;
+-
+-  @override
+-  Future<UserCredential?> signInWithGoogle() async {
+-    _isSigningIn = true;
+-    _isLoading = true;
+-    notifyListeners();
+-    
+-    // Simulate network delay
+-    await Future.delayed(const Duration(milliseconds: 100));
+-    
+-    _isSigningIn = false;
+-    _isLoading = false;
+-    notifyListeners();
+-    return null; // Simulate success
+-  }
+-
+-  @override
+-  void clearError() {
+-    _errorMessage = null;
+-    notifyListeners();
+-  }
+-}
+-
+-class MockDatabaseService extends ChangeNotifier implements DatabaseService {
+-  bool _isLoading = false;
+-  String? _errorMessage;
+-  List<GroupModel> _groups = [];
+-
+-  @override
+-  bool get isLoading => _isLoading;
+-  @override
+-  String? get errorMessage => _errorMessage;
+-
+-  @override
+-  Future<bool> createGroup(GroupModel group) async {
+-    _isLoading = true;
+-    notifyListeners();
+-    
+-    // Simulate network delay
+-    await Future.delayed(const Duration(milliseconds: 100));
+-    
+-    _groups.add(group);
+-    _isLoading = false;
+-    notifyListeners();
+-    return true;
+-  }
+-
+-  @override
+-  Future<bool> updateGroup(GroupModel group) async {
+-    _isLoading = true;
+-    notifyListeners();
+-    
+-    await Future.delayed(const Duration(milliseconds: 100));
+-    
+-    final index = _groups.indexWhere((g) => g.id == group.id);
+-    if (index != -1) {
+-      _groups[index] = group;
+-    }
+-    _isLoading = false;
+-    notifyListeners();
+-    return true;
+-  }
+-
+-  @override
+-  Future<bool> deleteGroup(String groupId) async {
+-    _isLoading = true;
+-    notifyListeners();
+-    
+-    await Future.delayed(const Duration(milliseconds: 100));
+-    
+-    _groups.removeWhere((g) => g.id == groupId);
+-    _isLoading = false;
+-    notifyListeners();
+-    return true;
+-  }
+-
+-  @override
+-  Future<bool> addExpense(ExpenseModel expense) async {
+-    _isLoading = true;
+-    notifyListeners();
+-    
+-    await Future.delayed(const Duration(milliseconds: 100));
+-    
+-    _isLoading = false;
+-    notifyListeners();
+-    return true;
+-  }
+-
+-  @override
+-  Stream<List<GroupModel>> getUserGroups(String userId) {
+-    return Stream.value(_groups);
+-  }
+-}
+-
+-void main() {
+-  group('UI Freeze Prevention Tests', () {
+-    late MockAuthService mockAuthService;
+-    late MockDatabaseService mockDatabaseService;
+-
+-    setUp(() {
+-      mockAuthService = MockAuthService();
+-      mockDatabaseService = MockDatabaseService();
+-    });
+-
+-    Widget createTestApp(Widget child) {
+-      return MaterialApp(
+-        home: MultiProvider(
+-          providers: [
+-            ChangeNotifierProvider<AuthService>.value(value: mockAuthService),
+-            ChangeNotifierProvider<DatabaseService>.value(value: mockDatabaseService),
+-          ],
+-          child: child,
+-        ),
+-      );
+-    }
+-
+-    testWidgets('Google Sign In button shows loading state and prevents re-entrant calls', (WidgetTester tester) async {
+-      await tester.pumpWidget(createTestApp(const LoginScreen()));
+-
+-      // Find the Google Sign In button
+-      final button = find.text('Continue with Google');
+-      expect(button, findsOneWidget);
+-
+-      // Tap the button
+-      await tester.tap(button);
+-      await tester.pump();
+-
+-      // Should show loading indicator
+-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+-
+-      // Button should be disabled during loading
+-      expect(tester.widget<ElevatedButton>(button).enabled, false);
+-
+-      // Wait for operation to complete
+-      await tester.pumpAndSettle();
+-
+-      // Button should be re-enabled
+-      expect(tester.widget<ElevatedButton>(button).enabled, true);
+-    });
+-
+-    testWidgets('Create Group button shows loading state and prevents re-entrant calls', (WidgetTester tester) async {
+-      await tester.pumpWidget(createTestApp(const GroupsScreen()));
+-
+-      // Find the FAB
+-      final fab = find.byType(FloatingActionButton);
+-      expect(fab, findsOneWidget);
+-
+-      // Tap to show dialog
+-      await tester.tap(fab);
+-      await tester.pumpAndSettle();
+-
+-      // Find the create button in dialog
+-      final createButton = find.text('Create');
+-      expect(createButton, findsOneWidget);
+-
+-      // Enter group name
+-      await tester.enterText(find.byType(TextField), 'Test Group');
+-      await tester.pump();
+-
+-      // Tap create button
+-      await tester.tap(createButton);
+-      await tester.pump();
+-
+-      // Should show loading state (button disabled)
+-      expect(tester.widget<ElevatedButton>(createButton).enabled, false);
+-
+-      // Wait for operation to complete
+-      await tester.pumpAndSettle();
+-
+-      // Dialog should close and show success
+-      expect(find.text('Create'), findsNothing);
+-    });
+-
+-    testWidgets('Add Expense button shows loading state and prevents re-entrant calls', (WidgetTester tester) async {
+-      await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
+-
+-      // Enter required fields
+-      await tester.enterText(find.byKey(const Key('description')), 'Test Expense');
+-      await tester.enterText(find.byKey(const Key('amount')), '100.00');
+-      await tester.pump();
+-
+-      // Find the Add Expense button
+-      final addButton = find.text('Add Expense');
+-      expect(addButton, findsOneWidget);
+-
+-      // Tap the button
+-      await tester.tap(addButton);
+-      await tester.pump();
+-
+-      // Should show loading state
+-      expect(find.text('Adding...'), findsOneWidget);
+-      expect(tester.widget<ElevatedButton>(addButton).enabled, false);
+-
+-      // Wait for operation to complete
+-      await tester.pumpAndSettle();
+-
+-      // Should show success and navigate back
+-      expect(find.text('Add Expense'), findsNothing);
+-    });
+-
+-    testWidgets('Group detail dialog buttons show loading states', (WidgetTester tester) async {
+-      final testGroup = GroupModel.create(
+-        name: 'Test Group',
+-        members: ['user1', 'user2'],
+-        memberNames: {'user1': 'User 1', 'user2': 'User 2'},
+-        createdBy: 'user1',
+-      );
+-
+-      await tester.pumpWidget(createTestApp(GroupDetailScreen(group: testGroup)));
+-
+-      // Find the popup menu button
+-      final popupButton = find.byType(PopupMenuButton);
+-      expect(popupButton, findsOneWidget);
+-
+-      // Open menu
+-      await tester.tap(popupButton);
+-      await tester.pumpAndSettle();
+-
+-      // Test Edit Group
+-      await tester.tap(find.text('Edit Group'));
+-      await tester.pumpAndSettle();
+-
+-      // Enter new name
+-      await tester.enterText(find.byType(TextField), 'Updated Group');
+-      await tester.pump();
+-
+-      // Tap Update
+-      final updateButton = find.text('Update');
+-      await tester.tap(updateButton);
+-      await tester.pump();
+-
+-      // Should show loading state
+-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+-      expect(tester.widget<ElevatedButton>(updateButton).enabled, false);
+-
+-      // Wait for completion
+-      await tester.pumpAndSettle();
+-
+-      // Test Delete Group
+-      await tester.tap(popupButton);
+-      await tester.pumpAndSettle();
+-      await tester.tap(find.text('Delete Group'));
+-      await tester.pumpAndSettle();
+-
+-      final deleteButton = find.text('Delete');
+-      await tester.tap(deleteButton);
+-      await tester.pump();
+-
+-      // Should show loading state
+-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+-      expect(tester.widget<ElevatedButton>(deleteButton).enabled, false);
+-
+-      // Wait for completion
+-      await tester.pumpAndSettle();
+-    });
+-
+-    testWidgets('Multiple rapid button taps do not cause freezes', (WidgetTester tester) async {
+-      await tester.pumpWidget(createTestApp(const LoginScreen()));
+-
+-      final button = find.text('Continue with Google');
+-      
+-      // Rapidly tap the button multiple times
+-      for (int i = 0; i < 5; i++) {
+-        await tester.tap(button);
+-        await tester.pump(const Duration(milliseconds: 50));
+-      }
+-
+-      // Should only execute once and show loading
+-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+-      expect(tester.widget<ElevatedButton>(button).enabled, false);
+-
+-      // Wait for completion
+-      await tester.pumpAndSettle();
+-    });
+-  });
+-}
++import 'package:flutter/material.dart';
++import 'package:flutter_test/flutter_test.dart';
++import 'package:provider/provider.dart';
++import 'package:splitzy/services/auth_service.dart';
++import 'package:splitzy/services/database_service.dart';
++import 'package:splitzy/screens/login_screen.dart';
++import 'package:splitzy/screens/groups_screen.dart';
++import 'package:splitzy/screens/add_expense_screen.dart';
++import 'package:splitzy/screens/group_detail_screen.dart';
++import 'package:splitzy/models/group_model.dart';
++import 'package:splitzy/models/expense_model.dart';
++import 'package:splitzy/models/user_model.dart';
++import 'package:splitzy/models/settlement_model.dart';
++import 'dart:async';
 +
-+## Overview
-+This document outlines the UI/UX improvements implemented to streamline the expense addition process and add comprehensive transaction deletion capabilities across the Splitzy app.
-+
-+## Issues Addressed
-+
-+### 1. Add Expense Screen Simplification
-+**Problem**: The Add Expense screen had unnecessary complexity with "Add Person" button and "None" option that cluttered the interface.
-+
-+**Solution**: Removed redundant UI elements to create a cleaner, more streamlined expense addition process.
-+
-+### 2. Transaction Deletion Capability
-+**Problem**: Users had no way to delete transactions from group screens or individual expense management.
-+
-+**Solution**: Implemented comprehensive deletion functionality with multiple interaction methods and proper confirmation dialogs.
-+
-+## Implementation Details
-+
-+### 🎨 **Add Expense Screen Simplification**
-+
-+#### **Removed Elements**:
-+- **"Add Person" button**: Eliminated the ability to add new members during expense creation
-+- **"None" option**: Removed the toggle button that allowed clearing all selected members
-+- **Add Person Dialog**: Removed the entire dialog system for adding new members
-+- **Contacts Integration**: Removed contacts permission requests during expense creation
-+
-+#### **Simplified UI Structure**:
-+```dart
-+// Before: Complex row with multiple buttons
-+Row(
-+  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-+  children: [
-+    Text('Split between'),
-+    Row(
-+      children: [
-+        TextButton.icon(onPressed: _showAddPersonDialog, ...),
-+        TextButton(onPressed: toggleNone, child: Text('None')),
-+      ],
-+    ),
-+  ],
-+)
-+
-+// After: Clean, simple header
-+Text('Split between')
-+```
-+
-+#### **Benefits Achieved**:
-+- ✅ **Cleaner Interface**: Reduced visual clutter and complexity
-+- ✅ **Faster Workflow**: Fewer steps to complete expense creation
-+- ✅ **Reduced Confusion**: Eliminated potential user errors from complex member management
-+- ✅ **Consistent Experience**: Simplified interaction pattern across the app
-+
-+### 🗑️ **Transaction Deletion Implementation**
-+
-+#### **Deletion Methods Implemented**:
-+
-+1. **Swipe-to-Delete**: 
-+   - Swipe from right to left on any expense item
-+   - Red background with delete icon appears
-+   - Confirmation dialog before deletion
-+
-+2. **Popup Menu Delete**:
-+   - Three-dot menu (⋮) on each expense item
-+   - "Edit" and "Delete" options
-+   - Consistent across all expense screens
-+
-+3. **Confirmation Dialogs**:
-+   - Clear warning about permanent deletion
-+   - Cancel and Delete buttons with proper styling
-+   - Error handling with user feedback
-+
-+#### **Screens Enhanced**:
-+
-+**1. Group Detail Screen** (`group_detail_screen.dart`):
-+```dart
-+// Swipe-to-delete with confirmation
-+Dismissible(
-+  key: Key(expense.id),
-+  direction: DismissDirection.endToStart,
-+  background: Container(
-+    alignment: Alignment.centerRight,
-+    padding: const EdgeInsets.only(right: 20),
-+    color: Colors.red,
-+    child: const Icon(Icons.delete, color: Colors.white, size: 30),
-+  ),
-+  confirmDismiss: (direction) => _showDeleteExpenseDialog(expense),
-+  child: ListTile(...),
-+)
-+
-+// Popup menu with edit/delete options
-+PopupMenuButton<String>(
-+  icon: const Icon(Icons.more_vert),
-+  onSelected: (value) async {
-+    switch (value) {
-+      case 'edit': // Navigate to edit screen
-+      case 'delete': // Show delete confirmation
-+    }
-+  },
-+  itemBuilder: (context) => [
-+    PopupMenuItem(value: 'edit', child: Row([Icon(Icons.edit), Text('Edit')])),
-+    PopupMenuItem(value: 'delete', child: Row([Icon(Icons.delete, color: Colors.red), Text('Delete', style: TextStyle(color: Colors.red))])),
-+  ],
-+)
-+```
-+
-+**2. Non-Group Expenses Screen** (`non_group_expenses_screen.dart`):
-+- Same swipe-to-delete functionality
-+- Popup menu with edit/delete options
-+- Proper error handling for non-group expenses
-+
-+**3. My Expenses Screen** (`my_expenses_screen.dart`):
-+- Swipe-to-delete for personal expense management
-+- Popup menu integration
-+- Consistent with other expense screens
-+
-+#### **Delete Confirmation Dialog**:
-+```dart
-+Future<bool> _showDeleteExpenseDialog(ExpenseModel expense) async {
-+  final confirmed = await showDialog<bool>(
-+    context: context,
-+    builder: (context) => AlertDialog(
-+      title: const Text('Delete Expense'),
-+      content: Text(
-+        'Are you sure you want to delete "${expense.description}"? This action cannot be undone.',
-+      ),
-+      actions: [
-+        TextButton(
-+          onPressed: () => Navigator.of(context).pop(false),
-+          child: const Text('Cancel'),
-+        ),
-+        ElevatedButton(
-+          onPressed: () => Navigator.of(context).pop(true),
-+          style: ElevatedButton.styleFrom(
-+            backgroundColor: Colors.red,
-+            foregroundColor: Colors.white,
-+          ),
-+          child: const Text('Delete'),
-+        ),
-+      ],
-+    ),
++// Mock services for testing
++class MockAuthService extends ChangeNotifier implements AuthService {
++  bool _isLoading = false;
++  bool _isSigningIn = false;
++  String? _errorMessage;
++  SplitzyUser? _currentUser = SplitzyUser(
++    uid: 'test_user',
++    email: 'test@example.com',
++    name: 'Test User',
 +  );
 +
-+  if (confirmed != true) return false;
++  @override
++  bool get isLoading => _isLoading;
++  @override
++  bool get isSigningIn => _isSigningIn;
++  @override
++  String? get errorMessage => _errorMessage;
++  @override
++  SplitzyUser? get currentUser => _currentUser;
 +
-+  // Perform deletion with error handling
-+  final dbService = Provider.of<DatabaseService>(context, listen: false);
-+  final success = await dbService.deleteExpense(expense.id, expense.groupId);
-+  
-+  // Show appropriate feedback
-+  if (success) {
-+    ScaffoldMessenger.of(context).showSnackBar(
-+      SnackBar(
-+        content: Text('${expense.description} deleted'),
-+        action: SnackBarAction(label: 'Undo', onPressed: () { /* TODO */ }),
-+      ),
-+    );
++  @override
++  Future<String> signInWithGoogle() async {
++    _isSigningIn = true;
++    _isLoading = true;
++    notifyListeners();
++    
++    // Simulate network delay
++    await Future.delayed(const Duration(milliseconds: 100));
++    
++    _isSigningIn = false;
++    _isLoading = false;
++    notifyListeners();
++    return 'success';
++  }
++
++  @override
++  Future<bool> signInWithEmailAndPassword(String email, String password) async {
 +    return true;
-+  } else {
-+    ScaffoldMessenger.of(context).showSnackBar(
-+      SnackBar(
-+        content: Text(dbService.errorMessage ?? 'Failed to delete expense'),
-+        backgroundColor: Colors.red,
-+      ),
-+    );
-+    return false;
++  }
++
++  @override
++  Future<bool> createUserWithEmailAndPassword(String email, String password) async {
++    return true;
++  }
++
++  @override
++  Future<bool> signOut() async {
++    return true;
++  }
++
++  @override
++  Future<void> deleteAccount() async {
++    // Implementation
++  }
++
++  @override
++  Future<void> updateUserProfile({String? name, String? photoUrl, String? phoneNumber}) async {
++    // Implementation
++  }
++
++  @override
++  Future<String?> getAccessToken() async {
++    return null;
++  }
++
++  @override
++  Future<SplitzyUser?> getUserById(String userId) async {
++    return null;
++  }
++
++  @override
++  Future<List<SplitzyUser>> searchUsers(String query) async {
++    return [];
++  }
++
++  @override
++  void clearError() {
++    _errorMessage = null;
++    notifyListeners();
 +  }
 +}
-+```
 +
-+### 🎯 **User Experience Enhancements**
++class MockDatabaseService extends ChangeNotifier implements DatabaseService {
++  bool _isLoading = false;
++  String? _errorMessage;
++  final List<GroupModel> _groups = [];
++  final List<ExpenseModel> _expenses = [];
 +
-+#### **Visual Feedback**:
-+- **Swipe Animation**: Smooth red background reveal with delete icon
-+- **Confirmation Dialog**: Clear warning with prominent delete button
-+- **Success Feedback**: Snackbar with undo option (placeholder for future implementation)
-+- **Error Handling**: Red snackbar for failed deletions with specific error messages
++  @override
++  bool get isLoading => _isLoading;
++  @override
++  String? get errorMessage => _errorMessage;
 +
-+#### **Interaction Patterns**:
-+- **Consistent UI**: Same deletion methods across all expense screens
-+- **Intuitive Gestures**: Standard swipe-to-delete pattern users expect
-+- **Accessible Options**: Multiple ways to delete (swipe, menu, tap)
-+- **Safety Measures**: Confirmation required for all deletions
++  @override
++  Future<bool> createGroup(GroupModel group) async {
++    _isLoading = true;
++    notifyListeners();
++    
++    // Simulate network delay
++    await Future.delayed(const Duration(milliseconds: 100));
++    
++    _groups.add(group);
++    _isLoading = false;
++    notifyListeners();
++    return true;
++  }
 +
-+#### **Performance Optimizations**:
-+- **Efficient Animations**: Smooth swipe gestures with proper key management
-+- **Async Operations**: Non-blocking deletion with proper loading states
-+- **Error Recovery**: Graceful handling of network failures
++  @override
++  Future<bool> updateGroup(GroupModel group) async {
++    _isLoading = true;
++    notifyListeners();
++    
++    await Future.delayed(const Duration(milliseconds: 100));
++    
++    final index = _groups.indexWhere((g) => g.id == group.id);
++    if (index != -1) {
++      _groups[index] = group;
++    }
++    _isLoading = false;
++    notifyListeners();
++    return true;
++  }
 +
-+## Benefits Achieved
++  @override
++  Future<bool> deleteGroup(String groupId) async {
++    _isLoading = true;
++    notifyListeners();
++    
++    await Future.delayed(const Duration(milliseconds: 100));
++    
++    _groups.removeWhere((g) => g.id == groupId);
++    _isLoading = false;
++    notifyListeners();
++    return true;
++  }
 +
-+### ✅ **Add Expense Simplification**
-+- **Reduced Complexity**: Eliminated unnecessary member management during expense creation
-+- **Faster Workflow**: Streamlined process for adding expenses
-+- **Better UX**: Cleaner, more focused interface
-+- **Reduced Errors**: Fewer opportunities for user mistakes
++  @override
++  Stream<List<GroupModel>> getUserGroups(String userId) {
++    return Stream.value(_groups);
++  }
 +
-+### ✅ **Transaction Deletion**
-+- **Complete Control**: Users can now delete any transaction they own
-+- **Multiple Methods**: Swipe, menu, and confirmation options
-+- **Safety First**: Confirmation dialogs prevent accidental deletions
-+- **Consistent Experience**: Same deletion pattern across all screens
++  @override
++  Stream<List<ExpenseModel>> getGroupExpenses(String groupId) {
++    return Stream.value(_expenses.where((e) => e.groupId == groupId).toList());
++  }
 +
-+### ✅ **User Experience**
-+- **Intuitive Interactions**: Standard mobile app patterns (swipe-to-delete)
-+- **Clear Feedback**: Visual and textual confirmation of actions
-+- **Error Handling**: Proper error messages and recovery options
-+- **Accessibility**: Multiple ways to perform the same action
++  @override
++  Stream<List<SettlementModel>> getGroupSettlements(String groupId) {
++    return Stream.value([]);
++  }
 +
-+## Testing Scenarios
++  @override
++  Future<GroupModel?> getGroup(String groupId) async {
++    return _groups.firstWhere((g) => g.id == groupId);
++  }
 +
-+### **Add Expense Simplification Test**:
-+1. Navigate to Add Expense screen
-+2. Verify "Add Person" button is removed
-+3. Verify "None" option is removed
-+4. Confirm expense creation still works properly
-+5. Test with both group and non-group expenses
++  @override
++  Future<bool> addMemberToGroup(String groupId, String memberId, String memberName) async {
++    return true;
++  }
 +
-+### **Transaction Deletion Tests**:
++  @override
++  Future<bool> removeMemberFromGroup(String groupId, String memberId) async {
++    return true;
++  }
 +
-+**Swipe-to-Delete Test**:
-+1. Navigate to any expense list (Group, Non-Group, My Expenses)
-+2. Swipe right-to-left on an expense item
-+3. Verify red background with delete icon appears
-+4. Complete swipe to trigger confirmation dialog
-+5. Confirm deletion works and shows success message
++  @override
++  Future<bool> addExpense(ExpenseModel expense) async {
++    _isLoading = true;
++    notifyListeners();
++    
++    await Future.delayed(const Duration(milliseconds: 100));
++    
++    _expenses.add(expense);
++    _isLoading = false;
++    notifyListeners();
++    return true;
++  }
 +
-+**Popup Menu Delete Test**:
-+1. Tap the three-dot menu on any expense
-+2. Select "Delete" option
-+3. Verify confirmation dialog appears
-+4. Confirm deletion works properly
++  @override
++  Future<bool> updateExpense(ExpenseModel expense) async {
++    return true;
++  }
 +
-+**Error Handling Test**:
-+1. Attempt deletion with poor network connection
-+2. Verify error message appears
-+3. Confirm expense is not deleted
-+4. Test with invalid expense IDs
++  @override
++  Future<bool> deleteExpense(String expenseId, [String? groupId]) async {
++    return true;
++  }
 +
-+**Confirmation Dialog Test**:
-+1. Start deletion process
-+2. Cancel at confirmation dialog
-+3. Verify expense is not deleted
-+4. Confirm dialog closes properly
++  @override
++  Stream<List<ExpenseModel>> getAllExpenses() {
++    return Stream.value(_expenses);
++  }
 +
-+## Files Modified
++  @override
++  Future<bool> addSettlement(SettlementModel settlement) async {
++    return true;
++  }
 +
-+### **Core Screens**:
-+- `lib/screens/add_expense_screen.dart` - Removed Add Person functionality
-+- `lib/screens/group_detail_screen.dart` - Added deletion capabilities
-+- `lib/screens/non_group_expenses_screen.dart` - Added deletion capabilities
-+- `lib/screens/my_expenses_screen.dart` - Added deletion capabilities
++  @override
++  Stream<List<SettlementModel>> getAllSettlementsForUser(String userId) {
++    return Stream.value([]);
++  }
 +
-+### **Removed Code**:
-+- `_showAddPersonDialog()` method
-+- `_addPersonToExpense()` method
-+- `_isRequestingPermission` variable
-+- Add Person button and None option UI elements
-+- Contacts integration during expense creation
++  @override
++  Stream<List<Map<String, dynamic>>> getTransactionHistory(String userId) {
++    return Stream.value([]);
++  }
 +
-+### **Added Code**:
-+- Swipe-to-delete functionality with `Dismissible` widgets
-+- Popup menu with edit/delete options
-+- Delete confirmation dialogs
-+- Error handling and user feedback
-+- Consistent deletion patterns across screens
++  @override
++  Future<Map<String, double>> calculateBalances(String groupId) async {
++    return {};
++  }
 +
-+## Future Enhancements
++  @override
++  Future<List<SettlementModel>> calculateSettlements(String groupId) async {
++    return [];
++  }
 +
-+### **Planned Improvements**:
-+1. **Undo Functionality**: Implement actual undo for deleted expenses
-+2. **Bulk Deletion**: Allow selecting multiple expenses for batch deletion
-+3. **Deletion History**: Track deleted expenses for potential recovery
-+4. **Advanced Confirmation**: Different confirmation levels based on expense amount
-+5. **Animation Improvements**: Enhanced swipe animations and visual feedback
++  @override
++  void clearError() {
++    _errorMessage = null;
++    notifyListeners();
++  }
++}
 +
-+### **User Experience Enhancements**:
-+1. **Haptic Feedback**: Add vibration feedback for swipe gestures
-+2. **Sound Effects**: Optional sound feedback for deletions
-+3. **Custom Animations**: Smooth transitions for delete operations
-+4. **Accessibility**: Voice-over support for deletion actions
-+5. **Tutorial Mode**: Guided tour for new users
++void main() {
++  group('UI Freeze Prevention Tests', () {
++    late MockAuthService mockAuthService;
++    late MockDatabaseService mockDatabaseService;
 +
-+---
++    setUp(() {
++      mockAuthService = MockAuthService();
++      mockDatabaseService = MockDatabaseService();
++    });
 +
-+## ✅ **Implementation Complete**
++    Widget createTestApp(Widget child) {
++      return MaterialApp(
++        home: MultiProvider(
++          providers: [
++            ChangeNotifierProvider<AuthService>.value(value: mockAuthService),
++            ChangeNotifierProvider<DatabaseService>.value(value: mockDatabaseService),
++          ],
++          child: child,
++        ),
++      );
++    }
 +
-+All UI/UX improvements have been successfully implemented:
++    testWidgets('Google Sign In button shows loading state and prevents re-entrant calls', (WidgetTester tester) async {
++      await tester.pumpWidget(createTestApp(const LoginScreen()));
 +
-+1. **Add Expense Simplification** ✅ - Removed unnecessary complexity
-+2. **Transaction Deletion** ✅ - Comprehensive deletion capabilities
-+3. **User Experience** ✅ - Intuitive interactions and clear feedback
-+4. **Consistency** ✅ - Same patterns across all expense screens
-+5. **Safety** ✅ - Confirmation dialogs and error handling
++      // Find the Google Sign In button
++      final button = find.text('Continue with Google');
++      expect(button, findsOneWidget);
 +
-+The app now provides a streamlined expense creation process and complete transaction management capabilities with intuitive, safe, and consistent user interactions.
++      // Tap the button
++      await tester.tap(button);
++      await tester.pump();
++
++      // Should show loading indicator
++      expect(find.byType(CircularProgressIndicator), findsOneWidget);
++
++      // Button should be disabled during loading
++      expect(tester.widget<ElevatedButton>(button).enabled, false);
++
++      // Wait for operation to complete
++      await tester.pumpAndSettle();
++
++      // Button should be re-enabled
++      expect(tester.widget<ElevatedButton>(button).enabled, true);
++    });
++
++    testWidgets('Create Group button shows loading state and prevents re-entrant calls', (WidgetTester tester) async {
++      await tester.pumpWidget(createTestApp(const GroupsScreen()));
++
++      // Find the FAB
++      final fab = find.byType(FloatingActionButton);
++      expect(fab, findsOneWidget);
++
++      // Tap to show dialog
++      await tester.tap(fab);
++      await tester.pumpAndSettle();
++
++      // Find the create button in dialog
++      final createButton = find.text('Create');
++      expect(createButton, findsOneWidget);
++
++      // Enter group name
++      await tester.enterText(find.byType(TextField), 'Test Group');
++      await tester.pump();
++
++      // Tap create button
++      await tester.tap(createButton);
++      await tester.pump();
++
++      // Should show loading state (button disabled)
++      expect(tester.widget<ElevatedButton>(createButton).enabled, false);
++
++      // Wait for operation to complete
++      await tester.pumpAndSettle();
++
++      // Dialog should close and show success
++      expect(find.text('Create'), findsNothing);
++    });
++
++    testWidgets('Add Expense button shows loading state and prevents re-entrant calls', (WidgetTester tester) async {
++      await tester.pumpWidget(createTestApp(const AddExpenseScreen()));
++
++      // Enter required fields
++      await tester.enterText(find.byKey(const Key('description')), 'Test Expense');
++      await tester.enterText(find.byKey(const Key('amount')), '100.00');
++      await tester.pump();
++
++      // Find the Add Expense button
++      final addButton = find.text('Add Expense');
++      expect(addButton, findsOneWidget);
++
++      // Tap the button
++      await tester.tap(addButton);
++      await tester.pump();
++
++      // Should show loading state
++      expect(find.text('Adding...'), findsOneWidget);
++      expect(tester.widget<ElevatedButton>(addButton).enabled, false);
++
++      // Wait for operation to complete
++      await tester.pumpAndSettle();
++
++      // Should show success and navigate back
++      expect(find.text('Add Expense'), findsNothing);
++    });
++
++    testWidgets('Group detail dialog buttons show loading states', (WidgetTester tester) async {
++      final testGroup = GroupModel.create(
++        name: 'Test Group',
++        members: ['user1', 'user2'],
++        memberNames: {'user1': 'User 1', 'user2': 'User 2'},
++        createdBy: 'user1',
++      );
++
++      await tester.pumpWidget(createTestApp(GroupDetailScreen(group: testGroup)));
++
++      // Find the popup menu button
++      final popupButton = find.byType(PopupMenuButton);
++      expect(popupButton, findsOneWidget);
++
++      // Open menu
++      await tester.tap(popupButton);
++      await tester.pumpAndSettle();
++
++      // Test Edit Group
++      await tester.tap(find.text('Edit Group'));
++      await tester.pumpAndSettle();
++
++      // Enter new name
++      await tester.enterText(find.byType(TextField), 'Updated Group');
++      await tester.pump();
++
++      // Tap Update
++      final updateButton = find.text('Update');
++      await tester.tap(updateButton);
++      await tester.pump();
++
++      // Should show loading state
++      expect(find.byType(CircularProgressIndicator), findsOneWidget);
++      expect(tester.widget<ElevatedButton>(updateButton).enabled, false);
++
++      // Wait for completion
++      await tester.pumpAndSettle();
++
++      // Test Delete Group
++      await tester.tap(popupButton);
++      await tester.pumpAndSettle();
++      await tester.tap(find.text('Delete Group'));
++      await tester.pumpAndSettle();
++
++      final deleteButton = find.text('Delete');
++      await tester.tap(deleteButton);
++      await tester.pump();
++
++      // Should show loading state
++      expect(find.byType(CircularProgressIndicator), findsOneWidget);
++      expect(tester.widget<ElevatedButton>(deleteButton).enabled, false);
++
++      // Wait for completion
++      await tester.pumpAndSettle();
++    });
++
++    testWidgets('Multiple rapid button taps do not cause freezes', (WidgetTester tester) async {
++      await tester.pumpWidget(createTestApp(const LoginScreen()));
++
++      final button = find.text('Continue with Google');
++      
++      // Rapidly tap the button multiple times
++      for (int i = 0; i < 5; i++) {
++        await tester.tap(button);
++        await tester.pump(const Duration(milliseconds: 50));
++      }
++
++      // Should only execute once and show loading
++      expect(find.byType(CircularProgressIndicator), findsOneWidget);
++      expect(tester.widget<ElevatedButton>(button).enabled, false);
++
++      // Wait for completion
++      await tester.pumpAndSettle();
++    });
++  });
++}
++
 EOF
 )

@@ -105,7 +105,7 @@ void main() {
             ChangeNotifierProvider<AuthService>.value(value: mockAuthService),
             ChangeNotifierProvider<DatabaseService>.value(value: mockDatabaseService),
             ChangeNotifierProvider<ContactsService>.value(value: mockContactsService),
-            ChangeNotifierProvider<LocalStorageService>.value(value: mockLocalStorageService),
+            Provider<LocalStorageService>.value(value: mockLocalStorageService),
           ],
           child: child,
         ),
@@ -540,6 +540,7 @@ void main() {
           groupName: 'Test Group',
           paymentMethod: 'Manual',
           status: SettlementStatus.completed,
+          date: DateTime.now(),
           createdAt: DateTime.now(),
         );
 

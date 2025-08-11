@@ -316,22 +316,43 @@ class AuthService extends ChangeNotifier {
   Future<void> deleteAccount() async {
     try {
       _setLoading(true);
+      _setError(null);
 
-      if (_currentFirebaseUser != null) {
+      if (_currentFirebaseUser == null) {
+        throw Exception('No user is currently signed in');
+      }
+
+      final userId = _currentFirebaseUser!.uid;
+
+      // Step 1: Delete user data from Firestore with error handling
+      try {
         await _firestore
             .collection('users')
-            .doc(_currentFirebaseUser!.uid)
+            .doc(userId)
             .delete();
-
-        await _currentFirebaseUser!.delete();
-
-        _currentSplitzyUser = null;
-        _currentGoogleUser = null;
-        _logger.i('Account deletion successful');
+        _logger.i('User data deleted from Firestore');
+      } catch (e) {
+        _logger.w('Failed to delete user data from Firestore: $e');
+        // Continue with account deletion even if Firestore deletion fails
       }
+
+      // Step 2: Delete Firebase Auth account
+      await _currentFirebaseUser!.delete();
+      _logger.i('Firebase Auth account deleted');
+
+      // Step 3: Clear local user data
+      _currentSplitzyUser = null;
+      _currentGoogleUser = null;
+      _currentFirebaseUser = null;
+
+      _logger.i('Account deletion successful');
     } on FirebaseAuthException catch (e) {
       _logger.e('Account deletion error: ${e.code} - ${e.message}');
       _setError('Failed to delete account: ${e.message}');
+      rethrow;
+    } catch (e) {
+      _logger.e('Account deletion error: $e');
+      _setError('Failed to delete account: $e');
       rethrow;
     } finally {
       _setLoading(false);

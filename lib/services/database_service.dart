@@ -344,23 +344,30 @@ class DatabaseService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
 
+      // Use batch write for better performance and atomicity
+      final batch = _db.batch();
+      
       // Add to main expenses collection for global queries
-      await _db.collection('expenses').doc(expense.id).set(expense.toMap());
+      batch.set(_db.collection('expenses').doc(expense.id), expense.toMap());
 
       // If it's a group expense, also add to group's subcollection
       if (expense.groupId.isNotEmpty) {
-        await _db
-            .collection('groups')
-            .doc(expense.groupId)
-            .collection('expenses')
-            .doc(expense.id)
-            .set(expense.toMap());
+        batch.set(
+          _db.collection('groups')
+              .doc(expense.groupId)
+              .collection('expenses')
+              .doc(expense.id),
+          expense.toMap(),
+        );
 
         // Update group's updatedAt timestamp
-        await _db.collection('groups').doc(expense.groupId).update({
+        batch.update(_db.collection('groups').doc(expense.groupId), {
           'updatedAt': DateTime.now().toIso8601String(),
         });
       }
+
+      // Commit all operations atomically
+      await batch.commit();
 
       _logger.i('Expense added successfully: ${expense.description}');
       return true;
@@ -731,28 +738,38 @@ class DatabaseService extends ChangeNotifier {
   /// Get active settlements for a user
   Stream<List<SettlementModel>> _getActiveSettlements(String userId) {
     try {
-      return _db
-          .collection('settlements')
-          .where('fromUser', isEqualTo: userId)
-          .orderBy('date', descending: true)
-          .snapshots()
-          .map((snapshot) {
-        return snapshot.docs
-            .map((doc) {
-          try {
-            return SettlementModel.fromMap({
-              'id': doc.id,
-              ...doc.data(),
-            });
-          } catch (e) {
-            _logger.e('Error parsing settlement ${doc.id}: $e');
-            return null;
-          }
-        })
-            .where((settlement) => settlement != null)
-            .cast<SettlementModel>()
-            .toList();
-      });
+      // Query for settlements where user is either fromUser or toUser
+      return Rx.combineLatest2(
+        _db
+            .collection('settlements')
+            .where('fromUser', isEqualTo: userId)
+            .orderBy('date', descending: true)
+            .snapshots(),
+        _db
+            .collection('settlements')
+            .where('toUser', isEqualTo: userId)
+            .orderBy('date', descending: true)
+            .snapshots(),
+        (QuerySnapshot fromUserSnapshot, QuerySnapshot toUserSnapshot) {
+          final allDocs = [...fromUserSnapshot.docs, ...toUserSnapshot.docs];
+          
+          return allDocs
+              .map((doc) {
+            try {
+              return SettlementModel.fromMap({
+                'id': doc.id,
+                ...doc.data(),
+              });
+            } catch (e) {
+              _logger.e('Error parsing settlement ${doc.id}: $e');
+              return null;
+            }
+          })
+              .where((settlement) => settlement != null)
+              .cast<SettlementModel>()
+              .toList();
+        },
+      );
     } catch (e) {
       _logger.e('Error getting active settlements: $e');
       return Stream.value([]);
@@ -762,28 +779,38 @@ class DatabaseService extends ChangeNotifier {
   /// Get historical settlements for a user
   Stream<List<SettlementModel>> _getHistoricalSettlementsForUser(String userId) {
     try {
-      return _db
-          .collection('settlement_history')
-          .where('fromUser', isEqualTo: userId)
-          .orderBy('date', descending: true)
-          .snapshots()
-          .map((snapshot) {
-        return snapshot.docs
-            .map((doc) {
-          try {
-            return SettlementModel.fromMap({
-              'id': doc.id,
-              ...doc.data(),
-            });
-          } catch (e) {
-            _logger.e('Error parsing historical settlement ${doc.id}: $e');
-            return null;
-          }
-        })
-            .where((settlement) => settlement != null)
-            .cast<SettlementModel>()
-            .toList();
-      });
+      // Query for historical settlements where user is either fromUser or toUser
+      return Rx.combineLatest2(
+        _db
+            .collection('settlement_history')
+            .where('fromUser', isEqualTo: userId)
+            .orderBy('date', descending: true)
+            .snapshots(),
+        _db
+            .collection('settlement_history')
+            .where('toUser', isEqualTo: userId)
+            .orderBy('date', descending: true)
+            .snapshots(),
+        (QuerySnapshot fromUserSnapshot, QuerySnapshot toUserSnapshot) {
+          final allDocs = [...fromUserSnapshot.docs, ...toUserSnapshot.docs];
+          
+          return allDocs
+              .map((doc) {
+            try {
+              return SettlementModel.fromMap({
+                'id': doc.id,
+                ...doc.data(),
+              });
+            } catch (e) {
+              _logger.e('Error parsing historical settlement ${doc.id}: $e');
+              return null;
+            }
+          })
+              .where((settlement) => settlement != null)
+              .cast<SettlementModel>()
+              .toList();
+        },
+      );
     } catch (e) {
       _logger.e('Error getting historical settlements for user: $e');
       return Stream.value([]);

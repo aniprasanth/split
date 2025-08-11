@@ -196,7 +196,8 @@ class NonGroupExpensesScreen extends StatelessWidget {
                                   ),
                                 );
                                 if (updated == true) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  final scaffoldMessenger = ScaffoldMessenger.of(context);
+                                  scaffoldMessenger.showSnackBar(
                                     const SnackBar(content: Text('Expense updated')),
                                   );
                                 }
@@ -239,7 +240,8 @@ class NonGroupExpensesScreen extends StatelessWidget {
                         ),
                       );
                       if (updated == true) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        final scaffoldMessenger = ScaffoldMessenger.of(context);
+                        scaffoldMessenger.showSnackBar(
                           const SnackBar(content: Text('Expense updated')),
                         );
                       }
@@ -285,7 +287,8 @@ class NonGroupExpensesScreen extends StatelessWidget {
     final success = await dbService.deleteExpense(expense.id);
     
     if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text('${expense.description} deleted'),
           action: SnackBarAction(
@@ -298,7 +301,8 @@ class NonGroupExpensesScreen extends StatelessWidget {
       );
       return true;
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      scaffoldMessenger.showSnackBar(
         SnackBar(
           content: Text(dbService.errorMessage ?? 'Failed to delete expense'),
           backgroundColor: Colors.red,

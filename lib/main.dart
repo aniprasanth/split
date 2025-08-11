@@ -8,6 +8,8 @@ import 'package:splitzy/services/database_service.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/services/local_storage_service.dart';
 import 'package:splitzy/services/contacts_service.dart';
+import 'package:splitzy/services/cache_service.dart';
+import 'package:splitzy/services/optimized_data_service.dart';
 import 'package:splitzy/screens/home_screen.dart';
 import 'package:splitzy/screens/login_screen.dart';
 import 'firebase_options.dart';
@@ -50,6 +52,12 @@ void main() async {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => DatabaseService()),
         ChangeNotifierProvider(create: (_) => ContactsService()),
+        ChangeNotifierProvider(create: (_) => CacheService()),
+        ChangeNotifierProxyProvider<CacheService, OptimizedDataService>(
+          create: (context) => OptimizedDataService(context.read<CacheService>()),
+          update: (context, cacheService, previous) => 
+            previous ?? OptimizedDataService(cacheService),
+        ),
       ],
       child: const MyApp(),
     ),

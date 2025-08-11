@@ -222,7 +222,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                                 ),
                               );
                               if (updated == true && mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                                scaffoldMessenger.showSnackBar(
                                   const SnackBar(content: Text('Expense updated')),
                                 );
                               }
@@ -268,7 +269,8 @@ class _GroupDetailScreenState extends State<GroupDetailScreen>
                       ),
                     );
                     if (updated == true && mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
+                      scaffoldMessenger.showSnackBar(
                         const SnackBar(content: Text('Expense updated')),
                       );
                     }

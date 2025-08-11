@@ -31,6 +31,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   List<String> _availableMembers = [];
   Map<String, String> _memberNames = {};
   bool _isLoading = false;
+  bool _isRequestingPermission = false;
   List<GroupModel> _userGroups = [];
 
   @override
@@ -287,9 +288,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         // Show Add Person button only for non-group expenses
                         if (_selectedGroup == null)
                           TextButton.icon(
-                            onPressed: _isLoading ? null : _showAddPersonDialog,
-                            icon: const Icon(Icons.person_add),
-                            label: const Text('Add Person'),
+                            onPressed: (_isLoading || _isRequestingPermission) ? null : _showAddPersonDialog,
+                            icon: (_isLoading || _isRequestingPermission) 
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.person_add),
+                            label: Text(_isRequestingPermission ? 'Loading...' : 'Add Person'),
                           ),
                       ],
                     ),
@@ -360,9 +363,11 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   void _showAddPersonDialog() {
     final contactsService = Provider.of<ContactsService>(context, listen: false);
+    final nameController = TextEditingController();
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
@@ -371,10 +376,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
+                  controller: nameController,
                   decoration: const InputDecoration(
                     hintText: 'Enter name',
                     border: OutlineInputBorder(),
                   ),
+                  autofocus: true,
                   onSubmitted: (name) {
                     if (name.trim().isNotEmpty) {
                       _addPersonToExpense(name.trim());
@@ -385,65 +392,95 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 8),
-                if (contactsService.hasPermission) ...[
-                  const Text('Or select from contacts:'),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 200,
-                    child: Consumer<ContactsService>(
-                      builder: (context, contactsService, child) {
-                        if (contactsService.isLoading) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-
-                        if (contactsService.contacts.isEmpty) {
-                          return const Center(child: Text('No contacts found'));
-                        }
-
-                        return ListView.builder(
-                          itemCount: contactsService.contacts.length,
-                          itemBuilder: (context, index) {
-                            final contact = contactsService.contacts[index];
-                            return ListTile(
-                              leading: const CircleAvatar(
-                                child: Icon(Icons.person),
-                              ),
-                              title: Text(contact.displayName),
-                              onTap: () {
-                                _addPersonToExpense(contact.displayName);
-                                Navigator.of(context).pop();
-                              },
-                            );
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ] else ...[
-                  TextButton.icon(
-                    onPressed: () async {
-                      final granted = await contactsService.requestPermission();
-                      if (granted && mounted) {
-                        Navigator.of(context).pop();
-                        _showAddPersonDialog();
-                      } else {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Permission denied')),
-                          );
-                        }
+                Consumer<ContactsService>(
+                  builder: (context, contactsService, child) {
+                    if (contactsService.hasPermission) {
+                      if (contactsService.isLoading) {
+                        return const Center(child: CircularProgressIndicator());
                       }
-                    },
-                    icon: const Icon(Icons.contacts),
-                    label: const Text('Grant contacts permission'),
-                  ),
-                ],
+
+                      if (contactsService.contacts.isEmpty) {
+                        return const Center(child: Text('No contacts found'));
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Or select from contacts:'),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            height: 200,
+                            child: ListView.builder(
+                              itemCount: contactsService.contacts.length,
+                              itemBuilder: (context, index) {
+                                final contact = contactsService.contacts[index];
+                                return ListTile(
+                                  leading: const CircleAvatar(
+                                    child: Icon(Icons.person),
+                                  ),
+                                  title: Text(contact.displayName),
+                                  onTap: () {
+                                    _addPersonToExpense(contact.displayName);
+                                    Navigator.of(context).pop();
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      );
+                    } else {
+                      return Column(
+                        children: [
+                          const Text('To select from contacts, grant permission:'),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: () async {
+                              setState(() => _isRequestingPermission = true);
+                              setDialogState(() {}); // Trigger rebuild
+                              
+                              final scaffoldMessenger = ScaffoldMessenger.of(context);
+                              final granted = await contactsService.requestPermission();
+                              
+                              if (mounted) {
+                                setState(() => _isRequestingPermission = false);
+                                
+                                if (granted) {
+                                  setDialogState(() {}); // Trigger rebuild to show contacts
+                                } else {
+                                  scaffoldMessenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Permission denied. You can still add people manually.'),
+                                      backgroundColor: Colors.orange,
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.contacts),
+                            label: const Text('Grant contacts permission'),
+                          ),
+                        ],
+                      );
+                    }
+                  },
+                ),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final name = nameController.text.trim();
+                  if (name.isNotEmpty) {
+                    _addPersonToExpense(name);
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: const Text('Add'),
               ),
             ],
           );

@@ -15,21 +15,46 @@ class ContactsService extends ChangeNotifier {
   bool get hasPermission => _hasPermission;
   String? get errorMessage => _errorMessage;
 
-  ContactsService();
+  ContactsService() {
+    _initializePermission();
+  }
 
-  Future<bool> requestPermission() async {
+  Future<void> _initializePermission() async {
     try {
-      _hasPermission = await FlutterContacts.requestPermission();
+      _hasPermission = await FlutterContacts.requestPermission(readonly: true);
       if (_hasPermission) {
         await loadContacts();
       }
       notifyListeners();
+    } catch (e) {
+      _logger.e('Error initializing contacts permission: $e');
+      _hasPermission = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> requestPermission() async {
+    try {
+      _isLoading = true;
+      _errorMessage = null;
+      notifyListeners();
+      
+      _hasPermission = await FlutterContacts.requestPermission();
+      if (_hasPermission) {
+        await loadContacts();
+      }
+      
+      notifyListeners();
       return _hasPermission;
     } catch (e) {
       _logger.e('Error requesting contacts permission: $e');
-      _errorMessage = 'Failed to request contacts permission';
+      _errorMessage = 'Failed to request contacts permission: $e';
+      _hasPermission = false;
       notifyListeners();
       return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
