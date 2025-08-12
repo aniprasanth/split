@@ -7,7 +7,81 @@ import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/services/contacts_service.dart';
 import 'package:splitzy/utils/validators.dart';
 import 'package:splitzy/utils/split_utils.dart';
+import 'package:splitzy/utils/async_operation_mixin.dart';
 import 'dart:async';
+
+// Assuming SplitType enum exists
+enum SplitType { equal, custom }
+
+// Assuming SplitCalculationService exists
+class SplitCalculationService {
+  static Future<Map<String, double>> calculateSplitAsync({
+    required double amount,
+    required List<String> members,
+    required SplitType splitType,
+    Map<String, double>? customRatios,
+  }) async {
+    if (splitType == SplitType.equal) {
+      return SplitUtils.computeEqualSplit(amount, members);
+    } else {
+      return SplitUtils.adjustCustomSplits(amount, customRatios ?? {});
+    }
+  }
+}
+
+mixin AsyncOperationMixin<T extends StatefulWidget> on State<T> {
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+
+  Future<void> performAsyncOperation({
+    required Future<void> Function() operation,
+    Duration timeout = const Duration(seconds: 30),
+    void Function()? onSuccess,
+    void Function(dynamic)? onError,
+  }) async {
+    if (_isLoading) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await operation().timeout(timeout);
+      if (!mounted) return;
+      onSuccess?.call();
+    } catch (e) {
+      if (!mounted) return;
+      onError?.call(e);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+}
 
 class AddExpenseScreen extends StatefulWidget {
   final GroupModel? group;
@@ -21,17 +95,18 @@ class AddExpenseScreen extends StatefulWidget {
   State<AddExpenseScreen> createState() => _AddExpenseScreenState();
 }
 
-class _AddExpenseScreenState extends State<AddExpenseScreen> {
+class _AddExpenseScreenState extends State<AddExpenseScreen> with AsyncOperationMixin {
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
   final _amountController = TextEditingController();
+  late SplitType _selectedSplitType = SplitType.equal;
+  final Map<String, double> _customRatios = {};
 
   GroupModel? _selectedGroup;
   String _selectedPayer = '';
   List<String> _selectedMembers = [];
   List<String> _availableMembers = [];
   Map<String, String> _memberNames = {};
-  bool _isLoading = false;
   bool _isRequestingPermission = false;
   List<GroupModel> _userGroups = [];
 
@@ -46,10 +121,8 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     if (currentUser != null) {
       _selectedPayer = currentUser.uid;
-      // For non-group expenses, initialize with current user
       if (_selectedGroup == null) {
         _availableMembers = [currentUser.uid];
-        // Fixed: Remove null-aware operator since displayName can't be null
         _memberNames = {currentUser.uid: currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You'};
         _selectedMembers = [currentUser.uid];
       }
@@ -86,8 +159,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       if (mounted) {
         setState(() {
           _userGroups = groups;
-          // Only set a default group if one was passed in via constructor
-          // Otherwise, keep _selectedGroup as null (None)
           if (widget.group != null && _selectedGroup == null) {
             _selectedGroup = widget.group;
             _initializeGroupData();
@@ -111,18 +182,18 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         title: const Text('Add Expense'),
         actions: [
           TextButton(
-            onPressed: _isLoading
+            onPressed: isLoading
                 ? null
                 : () {
-              FocusScope.of(context).unfocus();
-              _saveExpense();
-            },
-            child: _isLoading
+                    FocusScope.of(context).unfocus();
+                    _saveExpense();
+                  },
+            child: isLoading
                 ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('SAVE'),
           ),
         ],
@@ -132,7 +203,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Group Selection
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -173,31 +243,30 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             );
                           })
                         ],
-                        onChanged: _isLoading
+                        onChanged: isLoading
                             ? null
                             : (group) {
-                          setState(() {
-                            _selectedGroup = group;
-                            if (group != null) {
-                              _initializeGroupData();
-                            } else {
-                              // For non-group expense, initialize with current user
-                              final authService = Provider.of<AuthService>(context, listen: false);
-                              final currentUser = authService.currentUser;
-                              if (currentUser != null) {
-                                // Initialize with current user if no members exist
-                                if (_availableMembers.isEmpty) {
-                                  _availableMembers = [currentUser.uid];
-                                  // Fixed: Remove null-aware operator
-                                  _memberNames = {currentUser.uid: currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You'};
-                                  _selectedPayer = currentUser.uid;
-                                  _selectedMembers = [currentUser.uid];
-                                }
-                                // Keep existing members if they were already added
-                              }
-                            }
-                          });
-                        },
+                                setState(() {
+                                  _selectedGroup = group;
+                                  if (group != null) {
+                                    _initializeGroupData();
+                                  } else {
+                                    final authService = Provider.of<AuthService>(context, listen: false);
+                                    final currentUser = authService.currentUser;
+                                    if (currentUser != null) {
+                                      if (_availableMembers.isEmpty) {
+                                        _availableMembers = [currentUser.uid];
+                                        _memberNames = {
+                                          currentUser.uid:
+                                              currentUser.displayName.isNotEmpty ? currentUser.displayName : 'You'
+                                        };
+                                        _selectedPayer = currentUser.uid;
+                                        _selectedMembers = [currentUser.uid];
+                                      }
+                                    }
+                                  }
+                                });
+                              },
                         validator: (value) => null,
                       ),
                   ],
@@ -205,11 +274,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Description
             TextFormField(
               controller: _descriptionController,
-              enabled: !_isLoading,
+              enabled: !isLoading,
               decoration: const InputDecoration(
                 labelText: 'Description',
                 hintText: 'What was this expense for?',
@@ -221,11 +288,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               maxLength: 100,
             ),
             const SizedBox(height: 16),
-
-            // Amount
             TextFormField(
               controller: _amountController,
-              enabled: !_isLoading,
+              enabled: !isLoading,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 labelText: 'Amount',
@@ -242,9 +307,6 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // Show payer and split UI for both group and non-group expenses
-            // Paid by
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -257,22 +319,22 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     ),
                     const SizedBox(height: 8),
                     ..._availableMembers.map((member) => RadioListTile<String>(
-                      title: Text(_memberNames[member] ?? member),
-                      value: member,
-                      groupValue: _selectedPayer,
-                      onChanged: _isLoading ? null : (value) {
-                        setState(() {
-                          _selectedPayer = value!;
-                        });
-                      },
-                    )),
+                          title: Text(_memberNames[member] ?? member),
+                          value: member,
+                          groupValue: _selectedPayer,
+                          onChanged: isLoading
+                              ? null
+                              : (value) {
+                                  setState(() {
+                                    _selectedPayer = value!;
+                                  });
+                                },
+                        )),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 16),
-
-            // Split between
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -286,11 +348,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           'Split between',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
-                        // Show Add Person button only for non-group expenses
                         if (_selectedGroup == null)
                           TextButton.icon(
-                            onPressed: (_isLoading || _isRequestingPermission) ? null : _showAddPersonDialog,
-                            icon: (_isLoading || _isRequestingPermission)
+                            onPressed: (isLoading || _isRequestingPermission)
+                                ? null
+                                : _showAddPersonDialog,
+                            icon: (isLoading || _isRequestingPermission)
                                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.person_add),
                             label: Text(_isRequestingPermission ? 'Loading...' : 'Add Person'),
@@ -299,26 +362,26 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     ),
                     const SizedBox(height: 8),
                     ..._availableMembers.map((member) => CheckboxListTile(
-                      title: Text(_memberNames[member] ?? member),
-                      value: _selectedMembers.contains(member),
-                      onChanged: _isLoading ? null : (checked) {
-                        setState(() {
-                          if (checked == true) {
-                            _selectedMembers.add(member);
-                          } else {
-                            _selectedMembers.remove(member);
-                          }
-                        });
-                      },
-                    )),
+                          title: Text(_memberNames[member] ?? member),
+                          value: _selectedMembers.contains(member),
+                          onChanged: isLoading
+                              ? null
+                              : (checked) {
+                                  setState(() {
+                                    if (checked == true) {
+                                      _selectedMembers.add(member);
+                                    } else {
+                                      _selectedMembers.remove(member);
+                                    }
+                                  });
+                                },
+                        )),
                     if (_selectedMembers.isNotEmpty) ...[
                       const Divider(),
                       Builder(builder: (_) {
                         final amount = double.tryParse(_amountController.text) ?? 0.0;
                         final splitMap = SplitUtils.computeEqualSplit(amount, _selectedMembers);
-                        final perPerson = _selectedMembers.isEmpty
-                            ? 0.0
-                            : (splitMap[_selectedMembers.first] ?? 0.0);
+                        final perPerson = _selectedMembers.isEmpty ? 0.0 : (splitMap[_selectedMembers.first] ?? 0.0);
                         return Text(
                           'Split: ₹${perPerson.toStringAsFixed(2)} per person',
                           style: Theme.of(context).textTheme.bodySmall,
@@ -330,31 +393,29 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
               ),
             ),
             const SizedBox(height: 32),
-
-            // Save button
             ElevatedButton(
-              onPressed: _isLoading ? null : _saveExpense,
+              onPressed: isLoading ? null : _saveExpense,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              child: _isLoading
+              child: isLoading
                   ? const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  SizedBox(width: 8),
-                  Text('Adding...'),
-                ],
-              )
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 8),
+                        Text('Adding...'),
+                      ],
+                    )
                   : const Text(
-                'Add Expense',
-                style: TextStyle(fontSize: 16),
-              ),
+                      'Add Expense',
+                      style: TextStyle(fontSize: 16),
+                    ),
             ),
           ],
         ),
@@ -367,7 +428,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
     showDialog(
       context: context,
-      barrierDismissible: true, // Allow dismissing by tapping outside
+      barrierDismissible: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
@@ -438,24 +499,17 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           TextButton.icon(
                             onPressed: () async {
                               setState(() => _isRequestingPermission = true);
-                              setDialogState(() {}); // Trigger rebuild
+                              setDialogState(() {});
 
-                              final scaffoldMessenger = ScaffoldMessenger.of(context);
                               final granted = await contactsService.requestPermission();
 
                               if (mounted) {
                                 setState(() => _isRequestingPermission = false);
 
                                 if (granted) {
-                                  setDialogState(() {}); // Trigger rebuild to show contacts
+                                  setDialogState(() {});
                                 } else {
-                                  scaffoldMessenger.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Permission denied. You can still add people manually.'),
-                                      backgroundColor: Colors.orange,
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
-                                  );
+                                  showErrorSnackBar('Permission denied. You can still add people manually.');
                                 }
                               }
                             },
@@ -481,14 +535,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     _addPersonToExpense(name);
                     Navigator.of(context).pop();
                   } else {
-                    // Show validation message
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please enter a name'),
-                        backgroundColor: Colors.orange,
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    showErrorSnackBar('Please enter a name');
                   }
                 },
                 child: const Text('Add'),
@@ -501,180 +548,92 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
   }
 
   void _addPersonToExpense(String name) {
-    if (name.trim().isEmpty) return;
-    
-    // Check if person already exists
+    if (!mounted || name.trim().isEmpty) return;
+
     if (_availableMembers.contains(name)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Person "$name" is already added'),
-          backgroundColor: Colors.orange,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      showErrorSnackBar('Person "$name" is already added');
       return;
     }
-    
+
     setState(() {
       _availableMembers.add(name);
       _memberNames[name] = name;
-      // Auto-select new member for splitting
       if (!_selectedMembers.contains(name)) {
         _selectedMembers.add(name);
       }
     });
-    
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Person "$name" added successfully!'),
-        backgroundColor: Colors.green,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
 
-  // Removed per-call split calculation in build that could cause heavy rebuild loops.
+    showSuccessSnackBar('Person "$name" added successfully!');
+  }
 
   Future<void> _saveExpense() async {
-    // Prevent multiple simultaneous calls
-    if (_isLoading) return;
+    if (!_formKey.currentState!.validate()) return;
 
-    // Validate form
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
-    // For non-group expenses, allow if no group is selected but members exist
-    if (_selectedGroup == null && _availableMembers.length <= 1) {
-      _showErrorSnackBar('Please select a group or add people to split the expense with');
-      return;
-    }
+    await performAsyncOperation(
+      operation: () async {
+        if (_selectedGroup == null && _availableMembers.length <= 1) {
+          throw Exception('Please select a group or add people to split with');
+        }
 
-    // Validate member selection
-    if (_selectedMembers.isEmpty) {
-      _showErrorSnackBar('Please select at least one person to split the expense with');
-      return;
-    }
+        if (_selectedMembers.isEmpty) {
+          throw Exception('Please select at least one person');
+        }
 
-    // For non-group expenses, ensure at least 2 people are involved
-    if (_selectedGroup == null && _selectedMembers.length < 2) {
-      _showErrorSnackBar('Please add at least one more person to split the expense');
-      return;
-    }
+        if (_selectedGroup == null && _selectedMembers.length < 2) {
+          throw Exception('Please add at least one more person');
+        }
 
-    setState(() {
-      _isLoading = true;
-    });
+        final description = _descriptionController.text.trim();
+        final amount = double.tryParse(_amountController.text.trim());
 
-    try {
-      final description = _descriptionController.text.trim();
-      final amountText = _amountController.text.trim();
+        if (amount == null || amount <= 0) {
+          throw Exception('Please enter a valid amount');
+        }
 
-      // Validate amount
-      if (amountText.isEmpty) {
-        throw Exception('Please enter an amount');
-      }
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final currentUser = authService.currentUser;
 
-      final amount = double.tryParse(amountText);
-      if (amount == null) {
-        throw Exception('Please enter a valid amount');
-      }
+        if (currentUser == null) {
+          throw Exception('Please sign in to add an expense');
+        }
 
-      if (amount <= 0) {
-        throw Exception('Amount must be greater than 0');
-      }
-
-      // Get auth service to get current user info
-      final authService = Provider.of<AuthService>(context, listen: false);
-      final currentUser = authService.currentUser;
-
-      if (currentUser == null) {
-        throw Exception('User not authenticated');
-      }
-
-      // Calculate split amounts with proper rounding
-      Map<String, double> splitMap;
-      if (_selectedGroup != null) {
-        splitMap = SplitUtils.computeEqualSplit(amount, _selectedMembers);
-      } else {
-        // Non-group expense: split only among selected people (should typically be 2 people)
-        splitMap = SplitUtils.adjustCustomSplits(
-          amount,
-          {
-            for (final memberId in _selectedMembers) memberId: amount / _selectedMembers.length,
-          },
+        final splits = await SplitCalculationService.calculateSplitAsync(
+          amount: amount,
+          members: _selectedMembers,
+          splitType: _selectedSplitType,
+          customRatios: _customRatios.isNotEmpty ? _customRatios : null,
         );
-      }
 
-      // Create expense model using the factory method
-      final expense = ExpenseModel.create(
-        groupId: _selectedGroup?.id ?? '', // Empty string for non-group expenses
-        payer: _selectedPayer,
-        payerName: _memberNames[_selectedPayer] ?? _selectedPayer,
-        amount: amount,
-        description: description,
-        split: splitMap,
-        date: DateTime.now(),
-      );
+        final expense = ExpenseModel.create(
+          groupId: _selectedGroup?.id ?? '',
+          payer: _selectedPayer,
+          payerName: _memberNames[_selectedPayer] ?? _selectedPayer,
+          amount: amount,
+          description: description,
+          splitType: _selectedSplitType,
+          customRatios: _customRatios.isNotEmpty ? _customRatios : null,
+          split: splits,
+          date: DateTime.now(),
+        );
 
-      // Save to database using Provider (async write)
-      final databaseService = Provider.of<DatabaseService>(context, listen: false);
+        final dbService = Provider.of<DatabaseService>(context, listen: false);
+        final success = await dbService.addExpense(expense);
 
-      // Store context-dependent objects before async operation
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      final navigator = Navigator.of(context);
-
-      // Add timeout to prevent indefinite hanging
-      final success = await databaseService.addExpense(expense).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw TimeoutException('Expense creation timed out. Please try again.');
-        },
-      );
-
-      if (!success) {
-        throw Exception(databaseService.errorMessage ?? 'Failed to save expense');
-      }
-
-      if (!mounted) return;
-
-      // Show success message
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text('Expense "$description" added successfully!'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
-      // Return to previous screen immediately
-      navigator.pop(true); // Return true to indicate success
-
-    } on TimeoutException catch (e) {
-      if (!mounted) return;
-      _showErrorSnackBar(e.message ?? 'Expense creation timed out');
-    } catch (e) {
-      if (!mounted) return;
-      _showErrorSnackBar('Failed to add expense: ${e.toString()}');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        behavior: SnackBarBehavior.floating,
-      ),
+        if (!success) {
+          throw Exception(dbService.errorMessage ?? 'Failed to save expense');
+        }
+      },
+      timeout: const Duration(seconds: 30),
+      onSuccess: () {
+        showSuccessSnackBar('Expense "${_descriptionController.text.trim()}" added successfully!');
+        navigator.pop(true);
+      },
+      onError: (error) {
+        showErrorSnackBar(error.toString());
+      },
     );
   }
 }

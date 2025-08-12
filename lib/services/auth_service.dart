@@ -12,6 +12,7 @@ class AuthService extends ChangeNotifier {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Logger _logger = Logger();
 
+  // Instance variables with consistent naming
   User? _currentFirebaseUser;
   SplitzyUser? _currentSplitzyUser;
   GoogleSignInAccount? _currentGoogleUser;
@@ -20,11 +21,16 @@ class AuthService extends ChangeNotifier {
   bool _isGoogleSignInInitialized = false;
   bool _isSigningIn = false;
 
+  // Static constants for timeouts
+  static const int _signInTimeout = 30;
+  static const int _saveUserTimeout = 20;
+  static const int _silentSignInTimeout = 10;
+
   // Getters
   User? get currentFirebaseUser => _currentFirebaseUser ?? _auth.currentUser;
   SplitzyUser? get currentUser => _currentSplitzyUser;
   GoogleSignInAccount? get currentGoogleUser => _currentGoogleUser;
-  bool get isSignedIn => currentFirebaseUser != null;
+  bool get isSignedIn => currentFirebaseUser != null && _currentSplitzyUser != null;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   String? get currentUserId => currentFirebaseUser?.uid;
@@ -35,16 +41,23 @@ class AuthService extends ChangeNotifier {
   }
 
   void _init() {
-    _currentFirebaseUser = _auth.currentUser;
-    _auth.authStateChanges().listen(_onAuthStateChanged);
-    _initializeGoogleSignIn();
-    if (_currentFirebaseUser != null) {
-      _loadCurrentUser();
+    try {
+      _currentFirebaseUser = _auth.currentUser;
+      _auth.authStateChanges().listen(_onAuthStateChanged);
+      _initializeGoogleSignIn();
+      if (_currentFirebaseUser != null) {
+        _loadCurrentUser();
+      }
+    } catch (e) {
+      _logger.e('Error initializing AuthService: $e');
     }
   }
 
   Future<void> _initializeGoogleSignIn() async {
+    if (_isGoogleSignInInitialized) return;
+
     try {
+      await _googleSignIn.signInSilently();
       _isGoogleSignInInitialized = true;
       _logger.i('Google Sign-In initialized successfully');
     } catch (e) {
@@ -96,6 +109,7 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _logger.e('Error loading current user: $e');
+      _setError('Failed to load user data');
     }
   }
 
@@ -104,7 +118,11 @@ class AuthService extends ChangeNotifier {
       await _firestore
           .collection('users')
           .doc(user.uid)
-          .set(user.toMap());
+          .set(user.toMap())
+          .timeout(Duration(seconds: _saveUserTimeout));
+    } on TimeoutException {
+      _logger.e('Timeout saving user to Firestore');
+      throw TimeoutException('Failed to save user data');
     } catch (e) {
       _logger.e('Error saving user to Firestore: $e');
       rethrow;
@@ -112,8 +130,10 @@ class AuthService extends ChangeNotifier {
   }
 
   void _setLoading(bool loading) {
-    _isLoading = loading;
-    notifyListeners();
+    if (_isLoading != loading) {
+      _isLoading = loading;
+      notifyListeners();
+    }
   }
 
   void _setError(String? error) {
@@ -126,8 +146,9 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<UserCredential?> signInWithGoogle() async {
+    if (_isSigningIn) return null;
+    
     try {
-      if (_isSigningIn) return null;
       _isSigningIn = true;
       _setLoading(true);
       _setError(null);
@@ -136,16 +157,15 @@ class AuthService extends ChangeNotifier {
 
       final GoogleSignInAccount? googleUser = await _googleSignIn
           .signIn()
-          .timeout(const Duration(seconds: 30), onTimeout: () => null);
+          .timeout(Duration(seconds: _signInTimeout));
 
       if (googleUser == null) {
         _setError('Sign-in was cancelled');
         return null;
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser
-          .authentication
-          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Google authentication timed out'));
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication
+          .timeout(Duration(seconds: _signInTimeout));
 
       final credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
@@ -154,7 +174,8 @@ class AuthService extends ChangeNotifier {
 
       final UserCredential userCredential = await _auth
           .signInWithCredential(credential)
-          .timeout(const Duration(seconds: 30), onTimeout: () => throw TimeoutException('Firebase sign-in timed out'));
+          .timeout(Duration(seconds: _signInTimeout));
+
       _currentGoogleUser = googleUser;
 
       if (userCredential.user != null) {
@@ -165,33 +186,42 @@ class AuthService extends ChangeNotifier {
           photoUrl: userCredential.user!.photoURL ?? googleUser.photoUrl,
         );
 
-        // Saving user can also hang on poor networks; guard with timeout
-        await _saveUserToFirestore(splitzyUser).timeout(
-          const Duration(seconds: 20),
-          onTimeout: () => throw TimeoutException('Saving user timed out'),
-        );
+        await _saveUserToFirestore(splitzyUser);
         _currentSplitzyUser = splitzyUser;
       }
 
       _logger.i('Google sign-in successful');
       return userCredential;
-    } on TimeoutException catch (e) {
-      _logger.e('Timeout during Google sign-in: ${e.message}');
-      _setError(e.message ?? 'Operation timed out');
-      // Best-effort cleanup
-      try { await _googleSignIn.disconnect(); } catch (_) {}
+
+    } on TimeoutException {
+      _logger.e('Sign-in operation timed out');
+      _setError('Sign-in timed out. Please try again.');
+      await _handleSignInCleanup();
       return null;
+
     } on FirebaseAuthException catch (e) {
       _logger.e('Firebase Auth error: ${e.code} - ${e.message}');
-      _setError('Authentication failed: ${e.message}');
+      _setError(_getAuthErrorMessage(e.code));
+      await _handleSignInCleanup();
       return null;
+
     } catch (e) {
       _logger.e('Google sign-in error: $e');
       _setError('Sign-in failed. Please try again.');
+      await _handleSignInCleanup();
       return null;
+
     } finally {
       _setLoading(false);
       _isSigningIn = false;
+    }
+  }
+
+  Future<void> _handleSignInCleanup() async {
+    try {
+      await _googleSignIn.signOut();
+    } catch (e) {
+      _logger.w('Error during sign-in cleanup: $e');
     }
   }
 
@@ -200,17 +230,22 @@ class AuthService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
 
-      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final UserCredential userCredential = await _auth
+          .signInWithEmailAndPassword(email: email, password: password)
+          .timeout(Duration(seconds: _signInTimeout));
 
       _logger.i('Email sign-in successful');
       return userCredential;
+
+    } on TimeoutException {
+      _setError('Sign-in timed out. Please try again.');
+      return null;
+
     } on FirebaseAuthException catch (e) {
       _logger.e('Email sign-in error: ${e.code} - ${e.message}');
       _setError(_getAuthErrorMessage(e.code));
       return null;
+
     } finally {
       _setLoading(false);
     }
@@ -225,10 +260,9 @@ class AuthService extends ChangeNotifier {
       _setLoading(true);
       _setError(null);
 
-      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final UserCredential userCredential = await _auth
+          .createUserWithEmailAndPassword(email: email, password: password)
+          .timeout(Duration(seconds: _signInTimeout));
 
       if (userCredential.user != null) {
         await userCredential.user!.updateDisplayName(name);
@@ -245,10 +279,16 @@ class AuthService extends ChangeNotifier {
 
       _logger.i('Account creation successful');
       return userCredential;
+
+    } on TimeoutException {
+      _setError('Operation timed out. Please try again.');
+      return null;
+
     } on FirebaseAuthException catch (e) {
       _logger.e('Account creation error: ${e.code} - ${e.message}');
       _setError(_getAuthErrorMessage(e.code));
       return null;
+
     } finally {
       _setLoading(false);
     }
@@ -260,37 +300,30 @@ class AuthService extends ChangeNotifier {
 
       final GoogleSignInAccount? googleUser = await _googleSignIn
           .signInSilently()
-          .timeout(const Duration(seconds: 10), onTimeout: () => null);
+          .timeout(Duration(seconds: _silentSignInTimeout));
 
-      if (googleUser != null) {
-        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      if (googleUser == null) return false;
 
-        final credential = GoogleAuthProvider.credential(
-          idToken: googleAuth.idToken,
-          accessToken: googleAuth.accessToken,
-        );
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
 
-        final userCredential = await _auth.signInWithCredential(credential);
-        _currentGoogleUser = googleUser;
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+        accessToken: googleAuth.accessToken,
+      );
 
-        // Ensure user data is loaded
-        if (userCredential.user != null) {
-          await _loadCurrentUser();
-        }
+      final userCredential = await _auth.signInWithCredential(credential);
+      _currentGoogleUser = googleUser;
 
+      if (userCredential.user != null) {
+        await _loadCurrentUser();
         return true;
       }
 
       return false;
+
     } catch (e) {
       _logger.w('Silent sign-in failed: $e');
-      // Clear any stale auth state
-      try {
-        await _googleSignIn.signOut();
-        await _auth.signOut();
-      } catch (signOutError) {
-        _logger.w('Error clearing auth state: $signOutError');
-      }
+      await _handleSignInCleanup();
       return false;
     }
   }
@@ -298,13 +331,19 @@ class AuthService extends ChangeNotifier {
   Future<void> signOut() async {
     try {
       _setLoading(true);
+      _setError(null);
+
       await Future.wait([
         _googleSignIn.signOut(),
         _auth.signOut(),
       ]);
+
       _currentSplitzyUser = null;
       _currentGoogleUser = null;
+      _currentFirebaseUser = null;
+      
       _logger.i('Sign out successful');
+
     } catch (e) {
       _logger.e('Sign out error: $e');
       _setError('Failed to sign out');
@@ -314,46 +353,51 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> deleteAccount() async {
+    if (_currentFirebaseUser == null) {
+      _setError('No user is currently signed in');
+      return;
+    }
+
     try {
       _setLoading(true);
       _setError(null);
 
-      if (_currentFirebaseUser == null) {
-        throw Exception('No user is currently signed in');
-      }
-
       final userId = _currentFirebaseUser!.uid;
 
-      // Step 1: Delete user data from Firestore with error handling
+      // Delete user data from Firestore
       try {
         await _firestore
             .collection('users')
             .doc(userId)
-            .delete();
+            .delete()
+            .timeout(Duration(seconds: _saveUserTimeout));
+        
         _logger.i('User data deleted from Firestore');
       } catch (e) {
         _logger.w('Failed to delete user data from Firestore: $e');
-        // Continue with account deletion even if Firestore deletion fails
+        // Continue with account deletion
       }
 
-      // Step 2: Delete Firebase Auth account
+      // Delete Firebase Auth account
       await _currentFirebaseUser!.delete();
-      _logger.i('Firebase Auth account deleted');
-
-      // Step 3: Clear local user data
+      
+      // Clear local state
       _currentSplitzyUser = null;
       _currentGoogleUser = null;
       _currentFirebaseUser = null;
 
       _logger.i('Account deletion successful');
+
     } on FirebaseAuthException catch (e) {
       _logger.e('Account deletion error: ${e.code} - ${e.message}');
-      _setError('Failed to delete account: ${e.message}');
+      _setError(_getAuthErrorMessage(e.code));
       rethrow;
+
     } catch (e) {
       _logger.e('Account deletion error: $e');
-      _setError('Failed to delete account: $e');
+      _setError('Failed to delete account');
       rethrow;
+
     } finally {
       _setLoading(false);
     }
@@ -364,10 +408,14 @@ class AuthService extends ChangeNotifier {
     String? photoUrl,
     String? phoneNumber,
   }) async {
-    if (_currentSplitzyUser == null) return;
+    if (_currentSplitzyUser == null || _currentFirebaseUser == null) {
+      _setError('No user is currently signed in');
+      return;
+    }
 
     try {
       _setLoading(true);
+      _setError(null);
 
       final updatedUser = _currentSplitzyUser!.copyWith(
         name: name ?? _currentSplitzyUser!.name,
@@ -375,18 +423,20 @@ class AuthService extends ChangeNotifier {
         phoneNumber: phoneNumber ?? _currentSplitzyUser!.phoneNumber,
       );
 
-      await _saveUserToFirestore(updatedUser);
-      _currentSplitzyUser = updatedUser;
-
-      if (name != null && _currentFirebaseUser != null) {
+      if (name != null) {
         await _currentFirebaseUser!.updateDisplayName(name);
       }
 
+      await _saveUserToFirestore(updatedUser);
+      _currentSplitzyUser = updatedUser;
+
       _logger.i('Profile update successful');
+
     } catch (e) {
       _logger.e('Profile update error: $e');
       _setError('Failed to update profile');
       rethrow;
+
     } finally {
       _setLoading(false);
     }
@@ -409,12 +459,11 @@ class AuthService extends ChangeNotifier {
       final doc = await _firestore
           .collection('users')
           .doc(userId)
-          .get();
+          .get()
+          .timeout(Duration(seconds: _signInTimeout));
 
-      if (doc.exists) {
-        return SplitzyUser.fromMap(doc.data()!);
-      }
-      return null;
+      return doc.exists ? SplitzyUser.fromMap(doc.data()!) : null;
+
     } catch (e) {
       _logger.e('Error getting user by ID: $e');
       return null;
@@ -422,19 +471,21 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<List<SplitzyUser>> searchUsers(String query) async {
-    try {
-      if (query.isEmpty) return [];
+    if (query.isEmpty) return [];
 
+    try {
       final QuerySnapshot snapshot = await _firestore
           .collection('users')
           .where('email', isGreaterThanOrEqualTo: query.toLowerCase())
           .where('email', isLessThan: '${query.toLowerCase()}\uf8ff')
           .limit(10)
-          .get();
+          .get()
+          .timeout(Duration(seconds: _signInTimeout));
 
       return snapshot.docs
           .map((doc) => SplitzyUser.fromMap(doc.data() as Map<String, dynamic>))
           .toList();
+
     } catch (e) {
       _logger.e('Error searching users: $e');
       return [];
@@ -457,6 +508,14 @@ class AuthService extends ChangeNotifier {
         return 'This account has been disabled.';
       case 'too-many-requests':
         return 'Too many failed attempts. Please try again later.';
+      case 'operation-not-allowed':
+        return 'This sign-in method is not enabled.';
+      case 'account-exists-with-different-credential':
+        return 'An account already exists with the same email address but different sign-in credentials.';
+      case 'invalid-credential':
+        return 'The credential provided is malformed or has expired.';
+      case 'network-request-failed':
+        return 'A network error occurred. Please check your connection.';
       default:
         return 'Authentication failed. Please try again.';
     }

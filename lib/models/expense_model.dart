@@ -17,6 +17,8 @@ class ExpenseModel {
   final String? deletedGroupId;
   final String? deletedGroupName;
   final bool isDeleted;
+  final SplitType splitType;
+  final Map<String, double>? customRatios;
 
   ExpenseModel({
     required this.id,
@@ -35,6 +37,8 @@ class ExpenseModel {
     this.deletedGroupId,
     this.deletedGroupName,
     this.isDeleted = false,
+    this.splitType = SplitType.equal,
+    this.customRatios,
   }) : 
     createdAt = createdAt ?? DateTime.now(),
     updatedAt = updatedAt ?? DateTime.now();
@@ -76,6 +80,10 @@ class ExpenseModel {
         deletedGroupId: data['deletedGroupId'],
         deletedGroupName: data['deletedGroupName'],
         isDeleted: data['isDeleted'] ?? false,
+        splitType: SplitType.values[data['splitType'] ?? 0],
+        customRatios: data['customRatios'] != null 
+            ? Map<String, double>.from(data['customRatios'])
+            : null,
       );
     } catch (e) {
       throw Exception('Error parsing ExpenseModel: $e');
@@ -100,6 +108,8 @@ class ExpenseModel {
       'deletedGroupId': deletedGroupId,
       'deletedGroupName': deletedGroupName,
       'isDeleted': isDeleted,
+      'splitType': splitType.index,
+      'customRatios': customRatios,
     };
   }
 
@@ -120,6 +130,8 @@ class ExpenseModel {
     String? deletedGroupId,
     String? deletedGroupName,
     bool? isDeleted,
+    SplitType? splitType,
+    Map<String, double>? customRatios,
   }) {
     return ExpenseModel(
       id: id ?? this.id,
@@ -138,6 +150,8 @@ class ExpenseModel {
       deletedGroupId: deletedGroupId ?? this.deletedGroupId,
       deletedGroupName: deletedGroupName ?? this.deletedGroupName,
       isDeleted: isDeleted ?? this.isDeleted,
+      splitType: splitType ?? this.splitType,
+      customRatios: customRatios ?? this.customRatios,
     );
   }
 
@@ -151,6 +165,8 @@ class ExpenseModel {
     DateTime? date,
     String? category,
     String? imageUrl,
+    SplitType splitType = SplitType.equal,
+    Map<String, double>? customRatios,
   }) {
     return ExpenseModel(
       id: const Uuid().v4(),
@@ -163,6 +179,8 @@ class ExpenseModel {
       split: split,
       category: category,
       imageUrl: imageUrl,
+      splitType: splitType,
+      customRatios: customRatios,
     );
   }
 

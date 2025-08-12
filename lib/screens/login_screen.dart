@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:splitzy/services/auth_service.dart';
 import 'package:splitzy/screens/home_screen.dart';
+import 'package:splitzy/utils/async_operation_mixin.dart';
 import 'dart:async';
 
 class LoginScreen extends StatefulWidget {
@@ -11,20 +12,23 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
-  bool _isLoading = false;
-
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin, AsyncOperationMixin {
+  late final AnimationController _animationController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
+    _initializeAnimations();
+  }
+
+  void _initializeAnimations() {
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     );
+
     _fadeAnimation = Tween<double>(
       begin: 0.0,
       end: 1.0,
@@ -32,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       parent: _animationController,
       curve: Curves.easeInOut,
     ));
+
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
@@ -39,6 +44,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       parent: _animationController,
       curve: Curves.easeOutCubic,
     ));
+
     _animationController.forward();
   }
 
@@ -50,60 +56,67 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Consumer<AuthService>(
-        builder: (context, authService, child) {
-          return SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: FadeTransition(
-                opacity: _fadeAnimation,
-                child: SlideTransition(
-                  position: _slideAnimation,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 40),
-
-                      // App Logo and Title
-                      _buildHeader(),
-
-                      const SizedBox(height: 60),
-
-                      // Google Sign In Button
-                      _buildGoogleSignInButton(authService),
-
-                      const SizedBox(height: 24),
-
-                      // Error Message
-                      if (authService.errorMessage != null) ...[
-                        _buildErrorMessage(authService.errorMessage!),
-                        const SizedBox(height: 20),
+    return WillPopScope(
+      onWillPop: () async {
+        if (isLoading) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please wait while signing in...'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return false;
+        }
+        return true;
+      },
+      child: Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        body: Consumer<AuthService>(
+          builder: (context, authService, child) {
+            return SafeArea(
+              child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.all(24),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const SizedBox(height: 40),
+                        _buildHeader(),
+                        const SizedBox(height: 60),
+                        _buildGoogleSignInButton(authService),
+                        const SizedBox(height: 24),
+                        if (authService.errorMessage != null) ...[
+                          _buildErrorMessage(authService.errorMessage!),
+                          const SizedBox(height: 20),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
 
   Widget _buildHeader() {
+    final theme = Theme.of(context);
     return Column(
       children: [
-        // App Logo
         Container(
           width: 100,
           height: 100,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Theme.of(context).primaryColor,
-                Theme.of(context).primaryColor.withValues(alpha: 0.7),
+                theme.primaryColor,
+                theme.primaryColor.withOpacity(0.7),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -111,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             borderRadius: BorderRadius.circular(25),
             boxShadow: [
               BoxShadow(
-                color: Theme.of(context).primaryColor.withValues(alpha: 0.4),
+                color: theme.primaryColor.withOpacity(0.4),
                 blurRadius: 20,
                 spreadRadius: 2,
                 offset: const Offset(0, 8),
@@ -125,23 +138,19 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ),
         ),
         const SizedBox(height: 24),
-
-        // App Name
         Text(
           'Splitzy',
-          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+          style: theme.textTheme.headlineLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            color: Theme.of(context).primaryColor,
+            color: theme.primaryColor,
             letterSpacing: 1.2,
           ),
         ),
         const SizedBox(height: 8),
-
-        // Tagline
         Text(
           'Split expenses with ease',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-            color: Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.7),
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.textTheme.bodyMedium?.color?.withOpacity(0.7),
             letterSpacing: 0.5,
           ),
         ),
@@ -150,46 +159,48 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   }
 
   Widget _buildGoogleSignInButton(AuthService authService) {
+    final theme = Theme.of(context);
+    final isButtonDisabled = isLoading || authService.isLoading || authService.isSigningIn;
+
     return Container(
       width: double.infinity,
       height: 56,
       decoration: BoxDecoration(
         border: Border.all(
-          color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
+          color: theme.primaryColor.withOpacity(0.3),
           width: 1.5,
         ),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+            color: theme.primaryColor.withOpacity(0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ElevatedButton.icon(
-        onPressed: (_isLoading || authService.isLoading || authService.isSigningIn)
-            ? null
-            : () => _handleGoogleSignIn(authService),
+        onPressed: isButtonDisabled ? null : () => _handleGoogleSignIn(authService),
         style: ElevatedButton.styleFrom(
-          backgroundColor: Theme.of(context).cardColor,
-          foregroundColor: Theme.of(context).textTheme.bodyLarge?.color,
+          backgroundColor: theme.cardColor,
+          foregroundColor: theme.textTheme.bodyLarge?.color,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(28),
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
         ),
-        icon: (_isLoading || authService.isLoading || authService.isSigningIn)
+        icon: isButtonDisabled
             ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        )
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
             : Icon(
-          Icons.login,
-          color: Theme.of(context).primaryColor,
-        ),
-        label: Text(
+                Icons.login,
+                color: theme.primaryColor,
+              ),
+        label: const Text(
           'Continue with Google',
           style: TextStyle(
             fontSize: 16,
@@ -205,10 +216,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.1),
+        color: Colors.red.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: Colors.red.withValues(alpha: 0.3),
+          color: Colors.red.withOpacity(0.3),
         ),
       ),
       child: Row(
@@ -228,82 +239,56 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               ),
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              final authService = context.read<AuthService>();
+              authService.clearError();
+            },
+            color: Colors.red.shade600,
+            iconSize: 20,
+          ),
         ],
       ),
     );
   }
 
   Future<void> _handleGoogleSignIn(AuthService authService) async {
-    if (_isLoading || authService.isLoading || authService.isSigningIn) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
-    try {
-      // Clear any previous error messages
-      authService.clearError();
-      
-      // Add timeout to prevent indefinite hanging
-      final result = await authService.signInWithGoogle().timeout(
-        const Duration(seconds: 60),
-        onTimeout: () {
-          throw TimeoutException('Sign-in timed out. Please try again.');
-        },
-      );
-      
-      if (!mounted) return;
-      
-      if (result != null) {
-        // Success - navigate immediately
-        if (!mounted) return;
+    await performAsyncOperation(
+      operation: () async {
+        authService.clearError();
+        final result = await authService.signInWithGoogle();
         
-        // Use pushReplacement to prevent back navigation to login
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
-      } else {
-        // Check if there's a specific error message from auth service
-        final errorMsg = authService.errorMessage ?? 'Google sign-in failed. Please try again.';
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(errorMsg),
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-              duration: const Duration(seconds: 4),
-            ),
+        if (result != null) {
+          if (!mounted) return;
+          await navigator.pushReplacement(
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
           );
+        } else {
+          throw Exception(authService.errorMessage ?? 'Sign-in failed. Please try again.');
         }
-      }
-    } on TimeoutException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      },
+      timeout: const Duration(seconds: 30),
+      timeoutMessage: 'Sign-in timed out. Please try again.',
+      onError: (error) {
+        scaffoldMessenger.showSnackBar(
           SnackBar(
-            content: Text(e.message ?? 'Sign-in timed out'),
-            backgroundColor: Colors.orange,
-            behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
+            content: Text(error.toString()),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Dismiss',
+              textColor: Colors.white,
+              onPressed: () {
+                scaffoldMessenger.hideCurrentSnackBar();
+              },
+            ),
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+      },
+    );
   }
 }
